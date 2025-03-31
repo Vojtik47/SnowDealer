@@ -313,6 +313,7 @@ function generateOffer() {
   ];
   const msg = messages[Math.floor(Math.random() * messages.length)];
   typeMessage(`💬 ${nickname} (${district} - ⏱️${deliveryTime}h): ${msg}`);
+  playSound("notif");
   
   // Vytvoření nabídky do logu
   const offerDiv = document.createElement("div");
@@ -324,6 +325,7 @@ function generateOffer() {
   yesBtn.innerText = "Přijmout";
   yesBtn.classList.add("btn");
   yesBtn.onclick = () => {
+    playClickSound
     if (timeLeft < deliveryTime) {
       logMessage(`❌ Nemáš dost času na doručení do ${district}. Nabídka odmítnuta.`);
       if (Math.random() < NEGATIVE_PROB) {
@@ -371,6 +373,7 @@ function generateOffer() {
   noBtn.innerText = "Odmítnout";
   noBtn.classList.add("btn");
   noBtn.onclick = () => {
+    playClickSound
     logMessage("❌ Nabídka odmítnuta.");
     if (Math.random() < NEGATIVE_PROB) {
       generateTelegramMessage(true, null, nickname);
@@ -405,6 +408,9 @@ function generateRandomCustomerMessage() {
   const nickname = getRandomCustomerFromDistrict(district);
   const msg = randomMessages[Math.floor(Math.random() * randomMessages.length)];
   typeMessage(`💬 ${nickname} (${district}): ${msg}`);
+  playSound("notif");
+
+  
 }
 
 // --- One-take eventy ---
@@ -850,6 +856,7 @@ function nextDay() {
 function startGame() {
   document.getElementById("introScreen").style.display = "none";
   playBackgroundMusic();
+  playSound("notif");
   typeMessage("💬 @cmoud: Ahoj, já končím takže předávám svoje řemeslo, dal jsem kontakt na tebe pár lidem co vím, že jsou v pohodě. Taky jsem ti nechal 2 bůrky na začátek, hodně štěstí!");
 }
 window.startGame = startGame;
@@ -993,6 +1000,23 @@ function playBackgroundMusic() {
       console.error("🎵 Nelze přehrát hudbu:", e);
     });
   }
+}
+
+
+function playClickSound() {
+  const audio = document.getElementById("click");
+  audio.currentTime = 0; // Začneme od začátku
+  audio.play();
+}
+function playPositiveSound() {
+  const audio = document.getElementById("positiveclick");
+  audio.currentTime = 0; // Začneme od začátku
+  audio.play();
+}
+function playNegativeSound() {
+  const audio = document.getElementById("negativeclick");
+  audio.currentTime = 0; // Začneme od začátku
+  audio.play();
 }
 
 function logImportantMessage(msg) {
