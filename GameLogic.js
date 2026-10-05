@@ -1,171 +1,101 @@
-// Sněhový Dealer – verze 4.3
+// Sněhový Dealer – verze 5.0
+"use strict";
 
-// GLOBALNÍ PROMĚNNÉ
-let day = 1;
-let supply = 5;
-let money = 5000;
-let timeLeft = 5;
-let currentCar = "🚋 Tramvaj";
-let caught = false;
-let salesToday = false;
-let offersRemaining = 0;
-let lastHaircutDay = null;
+/* =====================================================================
+   KONSTANTY A DATA
+   ===================================================================== */
+const VERSION = "5.0";
+const SAVE_KEY = "snowDealer.save.v5";
+const ACH_KEY = "snowDealer.achievements.v5";
 
-
-// Proměnné pro statistiky a sledování denních úspěchů
-let districtFrequency = {};
-let districtAcceptedToday = {}; // Sledování, zda v dané čtvrti již byla objednávka přijata
-let simChangedToday = false;
-let phoneChangedToday = false;
-let districtSuccesses = {};
-
-// Nový set pro sledování zákazníků, kteří dnes již obdrželi nabídku
-let offersTodayUsers = new Set();
-
-// Konstanty a parametry
+const GOAL_MONEY = 1000000;   // výhra: tolik Kč v hotovosti
+const RENT_BASE = 12000;      // nájem v prvním měsíci
+const RENT_STEP = 3000;       // o kolik nájem roste každý další měsíc
+const RENT_MAX = 60000;
+const MAX_RAIDS = 2;          // druhý zátah = vězení
 const NEGATIVE_PROB = 0.5;
+
 const weekDays = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"];
-const districts = { 
-  "Žižkov": 1, "Vinohrady": 1, "Karlín": 1.5, "Holešovice": 1.5, 
-  "Smíchov": 2, "Dejvice": 2, "Letná": 2.5, "Modřany": 3 
+const districts = {
+  "Žižkov": 1, "Vinohrady": 1, "Karlín": 1.5, "Holešovice": 1.5,
+  "Smíchov": 2, "Dejvice": 2, "Letná": 2.5, "Modřany": 3
 };
 const districtCustomers = {
-  "Žižkov": ["@zizman", "@needhelpdycky", "@VojtikPupik", "@parkovej", "@cmoud"],
-  "Vinohrady": ["@vinoqueen", "@prosecco_bae", "@panvino", "@mimiblog", "@Tom Zfoutera"],
-  "Karlín": ["@startuplord", "@devonacid", "@panblazer", "@karlincooler", "@scrummasterka"],
-  "Holešovice": ["@skaterh", "@MartinKocian14", "@techbro", "@holeboy", "@mina1337"],
-  "Smíchov": ["@$PRYNC", "@lidltrader", "@tramvajguy", "@deckadaddy", "@babickaG."],
-  "Dejvice": ["@diplomatson", "@sugar-denny", "@MatroDaVinci", "@ambasadorcz", "@highclassh"],
-  "Letná": ["@letnapivo", "@Metr Párna", "@Hajzlberg", "@letna_influ", "@dogsitterka"],
-  "Modřany": ["@modranboy", "@vlakfetak", "@kralpanelaku", "@cyklosnek", "@kajakboss"]
+  "Žižkov": ["@zizman", "@needhelpdycky", "@VojtikPupik", "@parkovej", "@cmoud",
+    "@televizni_vez_fan", "@pivni_pavel", "@bobo_z_parku", "@kebab_kral", "@zizkov_ekzem", "@hospoda_hugo"],
+  "Vinohrady": ["@vinoqueen", "@prosecco_bae", "@panvino", "@mimiblog", "@Tom Zfoutera",
+    "@flatwhite_lucie", "@pilates_pavlina", "@vegan_vendy", "@naplavka_nikol", "@yoga_ivo", "@oat_latte_olga"],
+  "Karlín": ["@startuplord", "@devonacid", "@panblazer", "@karlincooler", "@scrummasterka",
+    "@agile_ales", "@kanban_karel", "@burnout_bara", "@oatmilk_ondra", "@standup_stanley", "@meeting_marcel"],
+  "Holešovice": ["@skaterh", "@MartinKocian14", "@techbro", "@holeboy", "@mina1337",
+    "@trznice_tomas", "@dj_halovka", "@streetart_sam", "@pivovar_pepa", "@vltavska_vlad", "@vinyl_viki"],
+  "Smíchov": ["@$PRYNC", "@lidltrader", "@tramvajguy", "@deckadaddy", "@babickaG.",
+    "@andel_andy", "@nakupak_nora", "@kino_palace_pete", "@smichov_sasa", "@vodafone_vlasta", "@bilbord_bohous"],
+  "Dejvice": ["@diplomatson", "@sugar-denny", "@MatroDaVinci", "@ambasadorcz", "@highclassh",
+    "@docent_dobrota", "@prednaska_petr", "@vila_viktor", "@ambasada_alex", "@cvut_cenek", "@kolej_kuba"],
+  "Letná": ["@letnapivo", "@Metr Párna", "@Hajzlberg", "@letna_influ", "@dogsitterka",
+    "@letenska_lenka", "@sparta_fanda", "@hipster_hugo", "@metronom_mara", "@pivni_zahradka", "@kocarek_kamil"],
+  "Modřany": ["@modranboy", "@vlakfetak", "@kralpanelaku", "@cyklosnek", "@kajakboss",
+    "@panelak_pavel", "@rybar_rosta", "@bazen_bobo", "@tramvaj_17_tomas", "@vyhlidka_vilda", "@zahradkar_zdenek"]
 };
 const districtNames = Object.keys(districts);
 
-// Inicializace popularity a policie
-let districtPopularity = {};
-let districtPolice = {};
-districtNames.forEach(d => {
-  districtPopularity[d] = 0.5;
-  districtPolice[d] = 0;
-});
+// Základní ceny pro zákaznické objednávky (1–5 g)
+const customerBasePrices = { 1: 3000, 2: 5000, 3: 6500, 4: 8000, 5: 9500 };
 
-// Základní ceny pro zákaznické objednávky (1–5g)
-const customerBasePrices = {
-  1: 3000,
-  2: 5000,
-  3: 6500,
-  4: 8000,
-  5: 9500
-};
-
-// Informace o vozidlech
-const carDelivery = {
-  "🛵 Yamaha Aerox": 0.5,
-  "🚋 Tramvaj": 1,
-  "🚗 Golf 2001 1.9TDI": -1,
-  "🚙 BMW 330D": -1.5,
-  "🏎️ BMW M4": -3
-};
+// time   = kolik hodin auto přidává (+) nebo ubírá (–) k době doručení
+// pop    = jednorázový bonus popularity při koupi
+// heat   = násobek pozornosti policie při doručení (nápadné auto = víc heatu)
+// upkeep = denní provoz (palivo, servis). Bez peněz auto stojí a jedeš MHD
+const CARS = [
+  { name: "🚋 Tramvaj", price: 0, time: 1, pop: 0, heat: 0.8, upkeep: 0, note: "nenápadná, ale pomalá" },
+  { name: "🛵 Yamaha Aerox", price: 12000, time: 0.25, pop: 0.2, heat: 0.9, upkeep: 100, note: "levný skútr, skoro nenápadný" },
+  { name: "🚗 Golf 2001 1.9TDI", price: 30000, time: -0.5, pop: 0.4, heat: 1, upkeep: 250, note: "pracovní kůň" },
+  { name: "🚙 BMW 330D", price: 65000, time: -1, pop: 0.8, heat: 1.15, upkeep: 500, note: "rychlé, ale už se na něj kouká" },
+  { name: "🏎️ BMW M4", price: 300000, time: -1.5, pop: 1.5, heat: 1.4, upkeep: 1200, note: "nejrychlejší a nejviditelnější" }
+];
+const carByName = name => CARS.find(c => c.name === name) || CARS[0];
 
 const policeLevels = ["Neznámý", "Známý", "Sledovaný", "Hledaný"];
 
-// --- Pomocná funkce pro vážený výběr ---
-function weightedRandomChoice(choices) {
-  let r = Math.random();
-  let sum = 0;
-  for (let i = 0; i < choices.length; i++) {
-    sum += choices[i].weight;
-    if (r < sum) {
-      return choices[i].value;
-    }
-  }
-  return choices[choices.length - 1].value;
-}
+const SUPPLIERS = {
+  "Sněžák": { mult: 0.85, scam: 0.20, note: "levný, ale 1 z 5 tě ošidí" },
+  "Mráz": { mult: 1.00, scam: 0.05, note: "standard" },
+  "Frozone": { mult: 1.10, scam: 0, note: "dražší, ale spolehlivý" },
+  "Ledovec": { mult: 0.95, scam: 0.10, note: "výhodný pro větší zásilky (50 g+)" },
+  "Chladič": { mult: 1.05, scam: 0.02, note: "skoro spolehlivý" }
+};
+// základ ~1 500 Kč za gram, větší zásilky o něco levněji; dodavatel a týdenní trh to posunou ±10 %
+const SUPPLY_OPTIONS = [
+  { grams: 5, basePrice: 7500 },
+  { grams: 10, basePrice: 15000 },
+  { grams: 20, basePrice: 29000 },
+  { grams: 50, basePrice: 72500 },
+  { grams: 100, basePrice: 140000 }
+];
 
-// --- UI a pomocné funkce ---
+const CAPACITY = [
+  { name: "Batoh", cap: 20, price: 0 },
+  { name: "Skrýš v bytě", cap: 50, price: 15000 },
+  { name: "Garáž", cap: 150, price: 60000 },
+  { name: "Sklad", cap: 500, price: 200000 }
+];
+const RUNNERS = [
+  { price: 30000, upkeep: 500 },
+  { price: 80000, upkeep: 1200 }
+];
+const LAWYER_PRICE = 40000;
 
-function typeMessage(text) {
-  const log = document.getElementById("gameLog");
-  const p = document.createElement("p");
-  log.appendChild(p);
-  let i = 0;
-  function type() {
-    if (i < text.length) {
-      p.textContent += text.charAt(i);
-      i++;
-      setTimeout(type, 25);
-    }
-  }
-  type();
-  log.scrollTop = log.scrollHeight;
-}
+const ACHIEVEMENTS = {
+  first: { name: "První kontakt", desc: "Doruč první objednávku" },
+  regular: { name: "Stálice", desc: "Získej zákazníka s plnou věrností" },
+  star: { name: "Hvězda čtvrti", desc: "Popularita 4+ v některé čtvrti" },
+  raid: { name: "Přežil jsem zátah", desc: "Přežij policejní zátah" },
+  month: { name: "Měsíc v Praze", desc: "Zaplať první nájem" },
+  m4: { name: "Rychlý jako blesk", desc: "Kup BMW M4" },
+  rich: { name: "Milionář", desc: "Vyhraj hru" }
+};
 
-function logMessage(msg) {
-  const log = document.getElementById("gameLog");
-  const p = document.createElement("p");
-  p.innerText = msg;
-  log.appendChild(p);
-  log.scrollTop = log.scrollHeight;
-}
-
-function playSound(id) {
-  const audio = document.getElementById(id);
-  if (audio) {
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-  }
-}
-
-function updateStatus() {
-  const today = weekDays[(day - 1) % 7];
-  const supplyColor = supply === 0 ? "red" : "white";
-  document.getElementById("status").innerHTML = `
-    📅 ${today} – Den ${day} | 
-    <span style="color: ${supplyColor};">❄️ ${supply}g</span> | 
-    💰 ${money} Kč | ⏱️ ${timeLeft}h
-  `;
-  document.getElementById("carInfo").innerText = `🚗 Auto: ${currentCar}`;
-  renderDistrictTable();
-}
-
-function renderDistrictTable() {
-  const container = document.getElementById("districtTableContainer");
-  container.innerHTML = `
-    <table style="width: auto; float: middle; border-collapse: collapse; font-size: 0.9rem; background: #111; border: 1px solid #444;">
-      <thead>
-        <tr style="background: #222;">
-          <th style="padding: 6px 12px; border: 1px solid #444;">📍 Čtvrť</th>
-          <th style="padding: 6px 12px; border: 1px solid #444;">🌟 Popularita</th>
-          <th style="padding: 6px 12px; border: 1px solid #444;">🚨 Policie</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${districtNames.map(d => {
-          const pop = districtPopularity[d];
-          const rawPolice = districtPolice[d] || 0;
-          const policeIndex = Math.floor(rawPolice);
-          const level = policeLevels[policeIndex] || "Neznámý";
-          let popIcon = "🕳️", popLabel = "Neznámý";
-          if (pop >= 4) { popIcon = "🔥"; popLabel = "Hvězda"; }
-          else if (pop >= 2) { popIcon = "🌟"; popLabel = "Známý"; }
-          else if (pop >= 1) { popIcon = "📦"; popLabel = "Místní"; }
-          let policeIcon = "🕵️", policeColor = "#fff";
-          if (level === "Sledovaný") { policeColor = "orange"; }
-          else if (level === "Hledaný") { policeColor = "red"; policeIcon = "🚨"; }
-          return `
-            <tr>
-              <td style="padding: 6px 12px; border: 1px solid #444;">${d}</td>
-              <td style="padding: 6px 12px; border: 1px solid #444;">${popIcon} ${popLabel}</td>
-              <td style="padding: 6px 12px; border: 1px solid #444; color: ${policeColor};">${policeIcon} ${level}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
-}
-
-// --- Telegram zprávy ---
 const telegramMessages = [
   "🟢 Tenhle týpek dává bomby!",
   "🟢 Doručení 10/10, doporučím chábrům.",
@@ -192,855 +122,1809 @@ const telegramMessages = [
   "🔴 Je to jen hype, ve skutečnosti nic."
 ];
 
-function generateTelegramMessage(negative = false, customMessage = null, nickname = null) {
-  const container = document.getElementById("telegramMessages");
-  function prependMessage(msg) {
-    const p = document.createElement("p");
-    p.textContent = msg;
-    container.prepend(p);
-    container.scrollTop = 0;
+const randomCustomerMessages = [
+  "čau, jak se máš, nepůjdeme někam?",
+  "Už jsem ti někdy řekl, že jsi fakt dobrej kámoš?",
+  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "Vozíš i půlky?",
+  "Sry, špatný číslo",
+  "Nabalil jsem včera ve studiu hodně nabitou roštěnku, za 2 ti jí přenechám",
+  "VČERA TO BYLO MEGA",
+  "Kolega z práce, prej od tebe taky bere :D",
+  "Jdu do Atíku, budeš mít čas kolem 7? Ráno?",
+  "Hm, tak jsem bez papíru, bro, včera jsem lízl opiáty",
+  "Nevíš o někom, kdo by uměl zařídit kouli?",
+  "Si zvanej na moje narozky, bro"
+];
+
+/* =====================================================================
+   POMOCNÉ FUNKCE
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const rand = arr => arr[Math.floor(Math.random() * arr.length)];
+const round2 = v => Math.round(v * 100) / 100;
+const fmt = n => Math.round(n).toLocaleString("cs-CZ");
+const fmtH = h => String(round2(h));
+
+function weightedRandomChoice(choices) {
+  const r = Math.random();
+  let sum = 0;
+  for (const c of choices) {
+    sum += c.weight;
+    if (r < sum) return c.value;
   }
-  function pickMessage() {
-    const filtered = negative
-      ? telegramMessages.filter(m => m.startsWith("🔴"))
-      : telegramMessages.filter(m => !m.startsWith("🔴"));
-    return filtered[Math.floor(Math.random() * filtered.length)];
-  }
-  if (customMessage) { prependMessage(customMessage); return; }
-  if (Math.random() < 0.3) { // 30% šance
-    const msg = pickMessage();
-    const finalMsg = nickname ? `${msg} – ${nickname}` : msg;
-    prependMessage(finalMsg);
-    if (negative && lastDistrictForTelegram) {
-      districtPopularity[lastDistrictForTelegram] = Math.max(0, districtPopularity[lastDistrictForTelegram] - 0.3);
-    } else if (!negative && lastDistrictForTelegram) {
-      districtPopularity[lastDistrictForTelegram] += 0.3;
-    }
-  }
+  return choices[choices.length - 1].value;
 }
 
-let lastDistrictForTelegram = null;
+/* =====================================================================
+   STAV HRY (S se ukládá do localStorage)
+   ===================================================================== */
+let S = null;
+let offerTimers = [];
+let eventTimer = null;
+let eventsPending = 0;   // dnešní eventy, které ještě nejsou vyřešené
+let musicEnabled = false;
+let flashTimer = null;
 
-// --- Nabídky ---
-function getRandomCustomerFromDistrict(district) {
-  const customers = districtCustomers[district];
-  return customers && customers.length ? customers[Math.floor(Math.random() * customers.length)] : "@unknown";
-}
-
-function generateOffer() {
-  if (offersRemaining <= 0 || timeLeft <= 0 || caught) return;
-  
-  // Generování objednaného množství pomocí váženého výběru dle specifikovaných pravděpodobností
-  const grams = weightedRandomChoice([
-    { value: 1, weight: 0.40 },
-    { value: 2, weight: 0.30 },
-    { value: 3, weight: 0.20 },
-    { value: 4, weight: 0.05 },
-    { value: 5, weight: 0.05 }
-  ]);
-  
-  // Výběr čtvrti váženým způsobem dle popularity
-  const weightedDistricts = districtNames.flatMap(d => {
-    const weight = districtPopularity[d] >= 1 ? Math.ceil(districtPopularity[d] * 15) : Math.ceil(districtPopularity[d] * 10);
-    return Array(weight).fill(d);
+function newState() {
+  const s = {
+    day: 1, supply: 5, money: 5000, timeLeft: 5, car: CARS[0].name,
+    over: false, won: false, endless: false,
+    capLevel: 0, lawyer: false, runners: 0,
+    strikes: 0, lastStrikeDay: 0, debt: 0,
+    lastHaircutDay: null, secUsed: false, carDown: false,
+    lastEventDay: 0, lastQuickDay: 0, recentEvents: [],
+    market: 1, supplierOffers: [], pending: [], seq: 0,
+    pop: {}, police: {}, warned: {}, idle: {}, freq: {},
+    accepted: {}, loyalty: {}, usedToday: [], salesToday: false,
+    today: { delivered: 0, grams: 0, startMoney: 5000 },
+    stats: { delivered: 0, grams: 0, earned: 0, raids: 0 }
+  };
+  districtNames.forEach(d => {
+    s.pop[d] = 0.5; s.police[d] = 0; s.warned[d] = 0; s.idle[d] = 0; s.freq[d] = 0;
   });
-  if (weightedDistricts.length === 0) return;
-  const district = weightedDistricts[Math.floor(Math.random() * weightedDistricts.length)];
-  lastDistrictForTelegram = district;
-  
-  // Výběr zákazníka, který dnes ještě nebyl použit
-  let nickname = getRandomCustomerFromDistrict(district);
-  let attempts = 0;
-  while (offersTodayUsers.has(nickname) && attempts < 10) {
-    nickname = getRandomCustomerFromDistrict(district);
-    attempts++;
-  }
-  offersTodayUsers.add(nickname);
-  
-  // Výpočet ceny dle základních cen
-  const basePrice = customerBasePrices[grams] || (3000 + (grams - 1) * 1500);
-  let finalPrice = basePrice;
-  const rand = Math.random();
-  if (rand < 0.8) {
-    finalPrice = basePrice;
-  } else if (rand < 0.95) {
-    const discount = 0.05 + Math.random() * 0.1;
-    finalPrice = basePrice * (1 - discount);
-  } else {
-    const markup = 0.05 + Math.random() * 0.15;
-    finalPrice = basePrice * (1 + markup);
-  }
-  const roundedPrice = Math.round(finalPrice / 100) * 100;
-  
-  // Výpočet času doručení
-  const baseTime = districts[district];
-  const bonus = carDelivery[currentCar] || 0;
-  const deliveryTime = Math.max(0.33, baseTime + bonus);
-  
-  // Automatické odmítnutí, pokud nemáš dost času nebo zásob
-  if (timeLeft < deliveryTime || supply < grams) {
-    logMessage(`⚠️ ${nickname} z ${district} – chtěl ${grams}g, ale nemáš čas nebo stash.`);
-    if (Math.random() < NEGATIVE_PROB) {
-      generateTelegramMessage(true, null, nickname);
-    }
-    offersRemaining--;
-    return;
-  }
-  
-  playSound("notif");
-  const messages = [
-    `hej bro, mas ${grams}? mam ${roundedPrice} kc, ale specham do ${district}`,
-    `Čau, mohl bys mi prosím doručit ${grams}g do ${district}? Mám připraveno ${roundedPrice} Kč.`,
-    `ty vole kamo, potrebuju snih ${grams}g, cash ready ${roundedPrice}, kde se potkáme?`,
-    `zdar, hodis mi ${grams} do ${district}? mam ${roundedPrice}kc, ale fakt specham`,
-    `hele, mam jen ${roundedPrice}kc, jsem na mrdku na teambuildingu :DD co za to dostanu treba ${grams}?`,
-    `Bráško, dneska fakt nutně potrebuju ${grams}g třeba za ${roundedPrice}, jsem v ${district}, ozvi se pls.`,
-    `yo, mas neco fresh? treba ${grams} za ${roundedPrice}, ale rychle pls`,
-    `Dobrý den, rád bych si objednal ${grams}g za ${roundedPrice} Kč. Je to možné?`,
-    `hej kamo, kamosz rikal ze mas kvalitu, vzal bych ${grams}g, cash ${roundedPrice}kc`,
-    `cau, jsem v ${district}, hodis mi ${grams}? mam ${roundedPrice}kc, ale specham`,
-    `ty kravo, potrebuju ${grams}g, jinak jsem v haji, mam ${roundedPrice}kc`,
-    `Zdarec, ${grams} pls, cash ready ${roundedPrice}kc, Praha jede`,
-    `cs pls ${grams} pls,za  ${roundedPrice}kc, u me ${district}`,
-    `Kolik ${grams} v kolik co nejdřív a za zakolik ${roundedPrice}kc ?`,
-    `Yo, kamo, ${grams}g za ${roundedPrice}kc, ale fakt rychle, jsem v ${district}`,
-    `Hele, potřebuji nutně ${grams}g, mám ${roundedPrice}, kde se potkáme?`,
-    `Čau, máš čas? Vzal bych ${grams}g za ${roundedPrice}, jsem v ${district}.`,
-    `brasko, dneska fakt nutne potrebuju,je zima a snezi ${grams}g, cash ${roundedPrice}`,
-    `hej kamo, ${grams}g pls, ale specham, jsem v ${district}, mam ${roundedPrice}`,
-    `yo, mas neco na zkousku? treba ${grams}, cash ready ${roundedPrice}kc`,
-    `Dobrý den, mohl byste mi doručit ${grams} do ${district}? Mám připraveno ${roundedPrice} Kč.`
-  ];
-  const msg = messages[Math.floor(Math.random() * messages.length)];
-  typeMessage(`💬 ${nickname} (${district} - ⏱️${deliveryTime}h): ${msg}`);
-  playSound("notif");
-  
-  // Vytvoření nabídky do logu
-  const offerDiv = document.createElement("div");
-  offerDiv.classList.add("offer");
-  offerDiv.dataset.nickname = nickname;
-  offerDiv.dataset.district = district;
-  
-  const yesBtn = document.createElement("button");
-  yesBtn.innerText = "Přijmout";
-  yesBtn.classList.add("btn");
-  yesBtn.onclick = () => {
-    playClickSound
-    if (timeLeft < deliveryTime) {
-      logMessage(`❌ Nemáš dost času na doručení do ${district}. Nabídka odmítnuta.`);
-      if (Math.random() < NEGATIVE_PROB) {
-        generateTelegramMessage(true, null, nickname);
-      }
-      offerDiv.remove();
-      offersRemaining--;
-      updateStatus();
-      return;
-    }
-    if (supply < grams) {
-      logMessage(`❌ Nemáš dost stash na doručení ${grams}g do ${district}. Nabídka odmítnuta.`);
-      if (Math.random() < NEGATIVE_PROB) {
-        generateTelegramMessage(true, null, nickname);
-      }
-      offerDiv.remove();
-      offersRemaining--;
-      updateStatus();
-      return;
-    }
-    districtSuccesses[district] = (districtSuccesses[district] || 0) + 1;
-    districtAcceptedToday[district] = true; // Označíme, že v této čtvrti proběhla úspěšná objednávka
-    offerDiv.dataset.accepted = "true";
-    supply -= grams;
-    money += roundedPrice;
-    districtFrequency[district] = (districtFrequency[district] || 0) + 1;
-    districtPopularity[district] = Math.min(5, districtPopularity[district] + 0.2);
-    timeLeft -= deliveryTime;
-    salesToday = true;
-    logMessage(`✅ Doručeno. -${grams}g, +${roundedPrice} Kč`);
-    generateTelegramMessage(false, null, nickname);
-    checkPolice(district);
-    checkHotDistricts();
-    updateStatus();
-    offerDiv.remove();
-    offersRemaining--;
-    if (districtPolice[district] >= 3.5) {
-      logMessage(`🚔 Policie tě zatkla v ${district}! GAME OVER.`);
-      caught = true;
-      return;
-    }
-  };
-  
-  const noBtn = document.createElement("button");
-  noBtn.innerText = "Odmítnout";
-  noBtn.classList.add("btn");
-  noBtn.onclick = () => {
-    playClickSound
-    logMessage("❌ Nabídka odmítnuta.");
-    if (Math.random() < NEGATIVE_PROB) {
-      generateTelegramMessage(true, null, nickname);
-    }
-    offerDiv.remove();
-    offersRemaining--;
-    updateStatus();
-  };
-  
-  offerDiv.appendChild(yesBtn);
-  offerDiv.appendChild(noBtn);
-  document.getElementById("gameLog").appendChild(offerDiv);
+  return s;
 }
 
-// --- Generování náhodných zpráv zákazníků ---
-function generateRandomCustomerMessage() {
-  const randomMessages = [
-    "čau, jak se máš, nepůjdeme někam?",
-    "Už jsem ti někdy řekl, že jsi fakt dobrej kámoš?",
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "Vozíš i půlky?",
-    "Sry, špatný číslo",
-    "Nabalil jsem včera ve studiu hodně nabitou roštěnku, za 2 ti jí přenechám",
-    "VČERA TO BYLO MEGA",
-    "Kolega z práce, prej od tebe taky bere :D",
-    "Jdu do Atíku, budeš mít čas kolem 7? Ráno?",
-    "Hm, tak jsem bez papíru, bro, včera jsem lízl opiáty",
-    "Nevíš o někom, kdo by uměl zařídit kouli?",
-    "Si zvanej na moje narozky, bro"
-  ];
-  const district = districtNames[Math.floor(Math.random() * districtNames.length)];
-  const nickname = getRandomCustomerFromDistrict(district);
-  const msg = randomMessages[Math.floor(Math.random() * randomMessages.length)];
-  typeMessage(`💬 ${nickname} (${district}): ${msg}`);
-  playSound("notif");
+const cap = () => CAPACITY[S.capLevel].cap;
+// auto, které právě opravdu jede (bez peněz na provoz stojí a jedeš MHD)
+const effCar = () => (S.carDown ? CARS[0] : carByName(S.car));
+const runnerUpkeep = () => RUNNERS.slice(0, S.runners).reduce((a, r) => a + r.upkeep, 0);
+const rentFor = day => Math.min(RENT_MAX, RENT_BASE + (Math.floor(day / 30) - 1) * RENT_STEP);
+const dayName = day => weekDays[(day - 1) % 7];
 
-  
+function saveGame() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage nemusí být dostupné */ }
+}
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || typeof s.day !== "number" || s.over) return null;
+    return Object.assign(newState(), s);
+  } catch (e) { return null; }
+}
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nic */ }
 }
 
-// --- One-take eventy ---
-function runOneTakeEvent(callbackAfterEvent = () => {}) {
-  const events = [
-    {
-      text: "🧼 V klubu ti z kapsy vypadlo 2g – zkusíš to najít?",
-      yes: () => {
-        if (Math.random() < 0.5) {
-          supply += 2;
-          logMessage("🕵️‍♂️ Našel jsi to pod gaučem! Jackpot.");
-        } else {
-          const d = districtNames[Math.floor(Math.random() * districtNames.length)];
-          districtPolice[d] = (districtPolice[d] || 0) + 1;
-          logMessage(`👮 Někdo tě viděl hledat – zájem policie v ${d} ++!`);
-        }
-      },
-      no: () => logMessage("👋 Kašli na to, bude nový.")
-    },
-    {
-      text: "💸 Našel jsi na zemi 2000 Kč – vezmeš si je?",
-      yes: () => {
-        if (Math.random() < 0.8) {
-          money += 2000;
-          logMessage("💰 Vzal jsi je – easy money.");
-        } else {
-          money = Math.max(0, money - 1000);
-          logMessage("🚓 Kamera tě nahrála, dostal jsi pokutu 1000 Kč.");
-        }
-      },
-      no: () => logMessage("😇 Nechal jsi je být. Karma čistá.")
-    },
-    {
-      text: "🧂 Napadlo tě seknout zásoby – chceš je naředit moukou?",
-      yes: () => {
-        if (Math.random() < 0.5) {
-          supply += 2;
-          logMessage("😏 Naředil jsi a nikdo nic nepoznal.");
-        } else {
-          districtNames.forEach(d => {
-            districtPopularity[d] = Math.max(0, districtPopularity[d] - 2);
-          });
-          logMessage("🤮 Zákazník to poznal – popularita -2!");
-        }
-      },
-      no: () => logMessage("👌 Zůstal jsi věrný kvalitě.")
-    },
-    {
-      text: "🎂 Tvůj kámoš má narozky – dáš mu 1g jako dárek?",
-      yes: () => {
-        if (supply >= 1) {
-          supply -= 1;
-          districtNames.forEach(d => districtPopularity[d] += 0.4);
-          logMessage("🎁 Kámoš happy – rozkecá to dál! 🌟Popularita +");
-        } else {
-          logMessage("🤷‍♂️ Nemáš ani gram – trapas.");
-        }
-      },
-      no: () => logMessage("😒 Nedal jsi nic – zůstáváš tajemný.")
-    },
-    {
-      text: "📱 Našel jsi levnej burner telefon za 1000 Kč – koupíš ho?",
-      yes: () => {
-        if (money >= 1000) {
-          money -= 1000;
-          const d = districtNames[Math.floor(Math.random() * districtNames.length)];
-          districtPolice[d] = Math.max(0, (districtPolice[d] || 0) - 1);
-          logMessage(`📴 Vzal jsi ho – policie zmatena v ${d}.`);
-        } else {
-          logMessage("💸 Nemáš ani na levnej mobil.");
-        }
-      },
-      no: () => logMessage("📵 Zůstáváš u starý Nokie.")
-    },
-    {
-      text: "🕵️ V klubu jsi slyšel drby o konkurenci – půjdeš to ověřit?",
-      yes: () => {
-        if (Math.random() < 0.4) {
-          const stolen = Math.floor(Math.random() * 3) + 1;
-          supply = Math.max(0, supply - stolen);
-          logMessage(`😱 Byl to setup – ztratil jsi ${stolen}g.`);
-        } else {
-          logMessage("🔍 Zjistil jsi info o konkurenčním dealerovi. Brzy ho uvidíš.");
-        }
-      },
-      no: () => logMessage("🦺 Zůstal jsi v bezpečí.")
-    },
-    {
-      text: "🧢 Kámoš ti nabídl pásek Moncler vestu za 6500 Kč. Bereš?",
-      yes: () => {
-        if (money >= 6500) {
-          money -= 6500;
-          if (Math.random() < 0.7) {
-            districtNames.forEach(d => districtPopularity[d] += 0.3);
-            logMessage("😎 Stylovej! Popularita +.");
-          } else {
-            districtNames.forEach(d => districtPopularity[d] = Math.max(0, districtPopularity[d] - 1));
-            logMessage("🤡 🤡 🤡 Tak ty si dobrej šašek že nosíš fejky");
-          }
-        } else {
-          logMessage("💸 Nemáš ani na větrovku.. Trapas.");
-        }
-      },
-      no: () => logMessage("👖 Zůstáváš lowkey.")
-    },
-    {
-      text: "🧢 Kámoš ti nabídl pásek BURBERRY za 5000 Kč. Je drip!",
-      yes: () => {
-        if (money >= 5000) {
-          money -= 5000;
-          if (Math.random() < 0.7) {
-            districtNames.forEach(d => districtPopularity[d] += 0.3);
-            logMessage("😎 Stylovej! Popularita +.");
-          } else {
-            districtNames.forEach(d => districtPopularity[d] = Math.max(0, districtPopularity[d] - 1));
-            logMessage("🤡 🤡 🤡 Tak ty si dobrej šašek že nosíš fejky");
-          }
-        } else {
-          logMessage("💸 Nemáš ani na pásek. Trapas.");
-        }
-      },
-      no: () => logMessage("👖 Zůstáváš lowkey.")
-    },
-    // Nová událost: Vydírání
-    (function(){
-      const blackmailQty = Math.floor(Math.random() * 5) + 1;
-      return {
-        text: `✉️ Vyděrač: "Dovez mi ${blackmailQty}g, nebo tě udám!"`,
-        yes: () => {
-          if (supply >= blackmailQty) {
-            supply -= blackmailQty;
-            timeLeft = Math.max(0, timeLeft - 1);
-            logMessage(`✅ Vydírání splněno: odebral jsi ${blackmailQty}g a ztratil 1 hodinu.`);
-          } else {
-            logMessage("❌ Nemáš dost stash na splnění vydírání!");
-          }
-        },
-        no: () => {
-          if (Math.random() < 0.5) {
-            logMessage("😏 Vydírání byl blaf, nic se nestalo.");
-          } else {
-            const d = districtNames[Math.floor(Math.random() * districtNames.length)];
-            districtPolice[d] = Math.max(districtPolice[d], 3);
-            logMessage(`🚨 Vydírání neblafoval – policie v ${d} tě HLEDÁ!`);
-          }
-        }
-      };
-    })(),
-    // Nová událost: Sněhová párty
-    {
-      text: "❄️ Chceš uspořádat sněhovou párty? (Stálo by to 10g)",
-      yes: () => {
-        if (supply >= 10) {
-          supply -= 10;
-          districtNames.forEach(d => {
-            districtPopularity[d] = Math.min(5, districtPopularity[d] + 1);
-          });
-          logMessage("🎉 Sněhová párty proběhla, popularita v čtvrtích výrazně vzrostla!");
-        } else {
-          logMessage("❌ Nemáš dost stash na sněhovou párty!");
-        }
-      },
-      no: () => logMessage("😐 Sněhová párty odložena.")
-    }
-  ];
-  
-  const available = events.filter(e => !e.condition || e.condition());
-  if (available.length === 0 || Math.random() > 0.25) {
-    callbackAfterEvent();
-    return;
-  }
-  const e = available[Math.floor(Math.random() * available.length)];
-  
-  // Vytvoříme obalový prvek pro celý event
-  const eventContainer = document.createElement("div");
-  eventContainer.classList.add("one-take-event"); // Můžeš si přidat vlastní CSS pro lepší vzhled
-  
-  // Přidáme text eventu
-  const eventText = document.createElement("p");
-  eventText.innerText = `❗ ${e.text}`;
-  eventContainer.appendChild(eventText);
-  
-  // Vytvoříme tlačítka pro event
-  const yesBtn = document.createElement("button");
-  yesBtn.innerText = "Ano";
-  yesBtn.classList.add("btn");
-  yesBtn.onclick = () => {
-    e.yes?.();
-    eventContainer.remove();
-    updateStatus();
-    callbackAfterEvent();
-  };
-  
-  const noBtn = document.createElement("button");
-  noBtn.innerText = "Ne";
-  noBtn.classList.add("btn");
-  noBtn.onclick = () => {
-    e.no?.();
-    eventContainer.remove();
-    updateStatus();
-    callbackAfterEvent();
-  };
-  
-  eventContainer.appendChild(yesBtn);
-  eventContainer.appendChild(noBtn);
-  
-  // Vložíme celý event (s obalem) na začátek logu
-  document.getElementById("gameLog").prepend(eventContainer);
+/* Achievementy se ukládají mimo hru, přežijí restart */
+let unlocked = new Set();
+try { unlocked = new Set(JSON.parse(localStorage.getItem(ACH_KEY) || "[]")); } catch (e) { /* nic */ }
+function unlock(id) {
+  if (unlocked.has(id) || !ACHIEVEMENTS[id]) return;
+  unlocked.add(id);
+  try { localStorage.setItem(ACH_KEY, JSON.stringify([...unlocked])); } catch (e) { /* nic */ }
+  logImportantMessage(`🏆 Achievement: ${ACHIEVEMENTS[id].name} – ${ACHIEVEMENTS[id].desc}`);
 }
 
-// --- Policie a horké čtvrti ---
-function checkPolice(district) {
-  if (districtPopularity[district] > 2 && Math.random() < 0.3) {
-    districtPolice[district] = (districtPolice[district] || 0) + 1;
-    logMessage(`🚨 Policie v ${district} tě víc sleduje!`);
-  }
-  if (districtPolice[district] >= 3.5) {
-    playSound("siren");
-    document.body.classList.add("police-flash");
-    logMessage(`🚔 Policie tě zatkla v ${district}! GAME OVER.`);
-    caught = true;
-  }
+/* =====================================================================
+   UI – LOG, ZVUKY
+   ===================================================================== */
+function playSound(id) {
+  const audio = $(id);
+  if (!audio) return;
+  try {
+    audio.currentTime = 0;
+    const p = audio.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* zvuk není kritický */ }
 }
 
-function checkHotDistricts() {
-  for (let district in districtFrequency) {
-    if (districtFrequency[district] >= 3 && Math.random() < 0.4) {
-      const msg = `🚨 Policie si všimla častých pohybů v ${district}.`;
-      generateTelegramMessage(true, msg);
-      districtPolice[district] = Math.min(3, (districtPolice[district] || 0) + 0.5);
-      districtFrequency[district] = 0;
-      return;
-    }
-  }
+function stopSound(id) {
+  const audio = $(id);
+  if (!audio) return;
+  try { audio.pause(); audio.currentTime = 0; } catch (e) { /* nic */ }
 }
 
-// --- Dodavatelé a vozidla ---
-function showSupplier() {
-  const baseOptions = [
-    { grams: 5, basePrice: 8000 },
-    { grams: 10, basePrice: 15000 },
-    { grams: 20, basePrice: 28000 },
-    { grams: 50, basePrice: 65000 },
-    { grams: 100, basePrice: 130000 }
-  ];
-  const supplierNicknames = ["Sněžák", "Mráz", "Frozone", "Ledovec", "Chladič"];
-  logMessage("📦 Nové nabídky od dodavatelů:");
-  
-  for (let i = 0; i < 3; i++) {
-    const supplier = supplierNicknames[Math.floor(Math.random() * supplierNicknames.length)];
-    baseOptions.forEach(opt => {
-      const variance = Math.floor(opt.basePrice * (Math.random() * 0.5 - 0.25));
-      const finalPrice = opt.basePrice + variance;
-      const btn = document.createElement("button");
-      btn.innerText = `${supplier} nabízí: ${opt.grams}g za ${finalPrice} Kč`;
-      btn.classList.add("btn");
-      btn.onclick = () => {
-        if (money >= finalPrice) {
-          money -= finalPrice;
-          supply += opt.grams;
-          logMessage(`✅ U ${supplier} jsi koupil ${opt.grams}g za ${finalPrice} Kč.`);
-        } else {
-          logMessage(`❌ U ${supplier}: Nemáš dost peněz.`);
-        }
-        updateStatus();
-        btn.remove();
-      };
-      document.getElementById("gameLog").appendChild(btn);
-    });
-  }
+// --- chat ve stylu Telegramu: bubliny zákazníků, tvoje odpovědi, systémové hlášky ---
+function typeInto(el, text, speed = 15) {
+  let i = 0;
+  (function step() {
+    if (!el.isConnected) return;
+    if (i < text.length) {
+      el.textContent += text.charAt(i++);
+      if (i % 4 === 0) scrollChat();
+      setTimeout(step, speed);
+    } else scrollChat();
+  })();
 }
 
-function showAutoOptions() {
-  const container = document.getElementById("carOptions");
-  container.innerHTML = "";
-  const title = document.createElement("div");
-  title.innerText = "🚗 Auta:";
-  title.style.marginBottom = "5px";
-  container.appendChild(title);
-  const infoText = document.createElement("div");
-  infoText.innerText = "Zkracuje rychlost doručení a přidává popularitu.";
-  infoText.style.fontSize = "0.8rem";
-  infoText.style.color = "#aaa";
-  infoText.style.marginBottom = "5px";
-  container.appendChild(infoText);
-  const cars = ["🛵 Yamaha Aerox", "🚋 Tramvaj", "🚗 Golf 2001 1.9TDI", "🚙 BMW 330D", "🏎️ BMW M4"];
-  const prices = {
-    "🛵 Yamaha Aerox": 15000,
-    "🚋 Tramvaj": 0,
-    "🚗 Golf 2001 1.9TDI": 30000,
-    "🚙 BMW 330D": 55000,
-    "🏎️ BMW M4": 500000
-  };
-  const popularityBonus = {
-    "🛵 Yamaha Aerox": 0.2,
-    "🚋 Tramvaj": 0,
-    "🚗 Golf 2001 1.9TDI": 0.5,
-    "🚙 BMW 330D": 1,
-    "🏎️ BMW M4": 3
-  };
-  const deliverySpeed = {
-    "🛵 Yamaha Aerox": "Rychlé doručení",
-    "🚋 Tramvaj": "Pomalé doručení",
-    "🚗 Golf 2001 1.9TDI": "Střední rychlost",
-    "🚙 BMW 330D": "Rychlé doručení",
-    "🏎️ BMW M4": "Velmi rychlé doručení"
-  };
-  const currentPrice = prices[currentCar] || 0;
-  cars.forEach(car => {
-    if (car === currentCar || prices[car] <= currentPrice) return;
-    const btn = document.createElement("button");
-    btn.innerText = `${car} – ${prices[car]} Kč`;
-    btn.classList.add("btn");
-    btn.title = `${deliverySpeed[car]} | Popularita: +${popularityBonus[car]}`;
-    btn.onclick = () => {
-      if (money >= prices[car]) {
-        money -= prices[car];
-        currentCar = car;
-        districtNames.forEach(d => {
-          districtPopularity[d] += popularityBonus[car];
-        });
-        logMessage(`✅ Koupil jsi ${car}. Popularita +${popularityBonus[car]}`);
-      } else {
-        logMessage("❌ Nemáš dost peněz.");
-      }
-      updateStatus();
-      showAutoOptions();
-    };
-    container.appendChild(btn);
-  });
+function scrollChat() {
+  const log = $("gameLog");
+  log.scrollTop = log.scrollHeight;
 }
 
-// --- Denní přechod (nextDay) ---
-function nextDay() {
-  if (caught) {
-    logMessage("🚨 Hra skončila, byl jsi zatčen nebo jsi neměl na nájem!");
-    return;
-  }
-  
-  // Zpracování zbývajících nabídek
-  const offers = document.querySelectorAll("#gameLog .offer");
-  offers.forEach(offerDiv => {
-    if (!offerDiv.dataset.accepted) {
-      const nickname = offerDiv.dataset.nickname;
-      if (Math.random() < NEGATIVE_PROB) {
-        generateTelegramMessage(true, null, nickname);
-      }
-      offerDiv.remove();
-    }
-  });
-  
-  // Snížení popularity a policejní aktivity pro čtvrti bez úspěšné objednávky
-  if (!salesToday) {
-    districtNames.forEach(d => {
-      if (!districtAcceptedToday[d]) {
-        if (districtPopularity[d] > 1 && Math.random() < 0.5) {
-          districtPopularity[d] -= 0.2;
-          logMessage(`🥶 Popularita v ${d} klesla – dlouho jsi tam nedoručoval.`);
-        }
-        if (districtPolice[d] > 0) {
-          districtPolice[d] = Math.max(0, districtPolice[d] - 0.1);
-          logMessage(`🕵️ Policie v ${d} se trochu uklidnila.`);
-        }
-      }
-    });
-  }
-  //if (salesToday) { checkHotDistricts(); }
-  
-  // Reset denních proměnných
-  salesToday = false;
-  districtAcceptedToday = {};
-  districtNames.forEach(d => { districtFrequency[d] = 0; });
-  document.getElementById("gameLog").innerHTML = "";
-  timeLeft = 4;
-  simChangedToday = false;
-  phoneChangedToday = false;
-  
-  day++;
-  const today = weekDays[(day - 1) % 7];
-  logMessage(`📆 ${today} – Začíná den ${day}`);
-  updateStatus();
-  
-  if (day > 1 && today === "Pondělí") { showSupplier(); }
-  showAutoOptions();
-  showSecurityOptions();
-  
-  if ((day + 5) % 30 === 0) {
-    logImportantMessage("📱 Majitel bytu: „Doufám, že tenhle měsíc zaplatíš včas, za 5 dní si přijdu“");
-    logImportantMessage("🏚️ Za 5 dní je nájem – 20 000 Kč, pokud nebudeš mít na zaplacení, přijde majitel a ukradne ti stash!");
-  }
-
-  if ((day + 1) % 30 === 0) {
-    logImportantMessage("🏚️ Nezapomeň, zítra se platí nájem! 20 000 Kč!");
-  }
-  
-  if (day % 30 === 0) {
-    const rent = 20000;
-    if (money >= rent) {
-      money -= rent;
-      updateStatus();
-      logImportantMessage(`🏚️ Platíš nájem: -${rent} Kč. Praha není levná...`);
-    } else if (supply >= 7) {
-      supply -= 7;
-      updateStatus();
-      logImportantMessage("😡 Nemáš peníze na nájem! Majitel si vzal 7g z tvého stashe.");
-    } else {
-      logMessage("💀 Nemáš peníze ani stash – majitel bytu tě vyhodil a odstěhoval ses do Brna. GAME OVER.");
-      caught = true;
-      return;
-    }
-  }
-  
-  // Úprava kadence objednávek podle popularity – celkový počet objednávek se vynásobí koeficientem 0.5.
-  const maxPop = Math.max(...districtNames.map(d => districtPopularity[d]));
-  let baseOffers = Math.min(1 + Math.floor(maxPop / 2), 5);
-  let bonusOffers = Math.floor(maxPop);
-  const currentDay = weekDays[(day - 1) % 7];
-  if (currentDay === "Pátek") {
-    baseOffers += 3;
-    bonusOffers += 1;
-  } else if (currentDay === "Sobota") {
-    baseOffers += 2;
-    bonusOffers += 1;
-  } else if (["Pondělí", "Úterý", "Středa"].includes(currentDay)) {
-    baseOffers = Math.max(1, baseOffers - 1);
-    bonusOffers = Math.max(0, bonusOffers - 1);
-  }
-  offersRemaining = Math.floor((baseOffers + bonusOffers) * 0.5);
-  if (offersRemaining <= 0) {
-    logMessage("⚠️ Žádná objednávka nepřišla – popularita je příliš nízká.");
-  } else {
-    for (let i = 0; i < offersRemaining; i++) {
-      setTimeout(() => generateOffer(), i * 1500);
-    }
-    if (Math.random() < 0.15) {
-      setTimeout(() => generateRandomCustomerMessage(), offersRemaining * 1500 + 1000);
-    }
-    setTimeout(() => runOneTakeEvent(), offersRemaining * 1500 + 2000);
-  }
+function chatAppend(el) {
+  $("gameLog").appendChild(el);
+  scrollChat();
+  return el;
 }
 
-// --- Start hry a bezpečnostní možnosti ---
-function startGame() {
-  document.getElementById("introScreen").style.display = "none";
-  playBackgroundMusic();
-  playSound("notif");
-  typeMessage("💬 @cmoud: Ahoj, já končím takže předávám svoje řemeslo, dal jsem kontakt na tebe pár lidem co vím, že jsou v pohodě. Taky jsem ti nechal 2 bůrky na začátek, hodně štěstí!");
-}
-window.startGame = startGame;
-
-function toggleHowToPlay() {
-  const section = document.getElementById("howToPlay");
-  section.style.display = section.style.display === "none" ? "block" : "none";
-}
-
-function createSecurityButton(text, cost, tooltip, callback) {
-  const btn = document.createElement("button");
-  btn.innerText = `${text} – ${cost} Kč`;
-  btn.classList.add("btn");
-  btn.disabled = money < cost;
-  btn.title = tooltip;
-  btn.onclick = () => {
-    if (!btn.disabled) {
-      callback();
-      updateStatus();
-      showSecurityOptions();
-    }
-  };
-  return btn;
-}
-
-function showSecurityOptions() {
-  const headerContainer = document.getElementById("securityRow");
-  headerContainer.innerHTML = "";
-  const title = document.createElement("div");
-  title.innerText = "📡 Zmatení policie";
-  title.style.marginBottom = "5px";
-  title.style.fontWeight = "bold";
-  headerContainer.appendChild(title);
-  const description = document.createElement("div");
-  description.innerText = "Snižuje hledanost policie.";
-  description.style.cssText = "font-size: 0.8rem; color: #aaa; margin-bottom: 5px;";
-  headerContainer.appendChild(description);
-  const barber = createSecurityButton(
-    "💈 Holič",
-    2000,
-    "Jednou týdně ti umožní nový sestřih a přidá 0,1 k popularitě.",
-    () => {
-      // Zkontroluj, zda byl Holič použit v posledních 7 dnech
-      if (lastHaircutDay !== null && day - lastHaircutDay < 7) {
-        logMessage("Vlasy ti ještě musejí trochu dorůst :) Zkus to za pár dní.");
-        return;
-      }
-      if (money < 2000) {
-        logMessage("Nemáš dost peněz na nový sestřih.");
-        return;
-      }
-      money -= 2000;
-      // Aktualizuj den posledního sestřihu
-      lastHaircutDay = day;
-      // Přidání malého bonusu k popularitě – např. ke všem čtvrtím
-      districtNames.forEach(d => {
-        districtPopularity[d] = Math.min(5, districtPopularity[d] + 0.1);
-
-        districtNames.forEach(d => {
-          districtPolice[d] = Math.max(0, districtPolice[d] - 0.1);
-        });
-      });
-      logMessage("💈 Nový sestřih – popularita mírně vzrostla a policejní hledanost mírně klesla.");
-      updateStatus();
-    }
-  );
-  const sim = createSecurityButton(
-    "📱 Změnit SIM",
-    5000,
-    "Sníží heat policie globálně o trochu více bodů než holič.",
-    () => {
-      money -= 5000;
-      districtNames.forEach(d => {
-        if (districtPolice[d] > 0 && Math.random() < 0.4) {
-          districtPolice[d]--;
-        }
-      });
-      logMessage("📱 SIM změněna – policie ztrácí stopu.");
-    }
-  );
-  const phone = createSecurityButton(
-    "📲 Nový mobil",
-    25000,
-    "Sníží heat policie globálně středně.",
-    () => {
-      money -= 25000;
-      districtNames.forEach(d => {
-        districtPolice[d] = Math.max(0, (districtPolice[d] || 0) - 1);
-      });
-      logMessage("📲 Nový telefon – policie nemá stopy.");
-    }
-  );
-  const bribe = createSecurityButton(
-    "💵 Úplatek",
-    75000,
-    "Sníží heat policie globálně a úplně.",
-    () => {
-      money -= 75000;
-      districtNames.forEach(d => {
-        districtPolice[d] = 0;
-      });
-      logMessage("💵 Policie podplacena – hledanost vynulována.");
-    }
-  );
-  headerContainer.appendChild(barber);
-  headerContainer.appendChild(sim);
-  headerContainer.appendChild(phone);
-  headerContainer.appendChild(bribe);
-}
-
-// --- window.onload a background music ---
-window.onload = () => {
-  logMessage("💬 Vítej v Sněhovém Dealerovi – verze 4.3");
-  updateStatus();
-  showAutoOptions();
-  showSecurityOptions();
-  const audio = document.createElement("audio");
-  audio.id = "grundzaSong";
-  audio.src = "sounds/CHURAQ_SPUTNIK_HOFTYK_NAUME_NA_PLECH.mp3"; // Uprav cestu k souboru
-  audio.preload = "auto";
-  document.body.appendChild(audio);
-  
-  // Registrace tlačítka Next Day – ujisti se, že v HTML existuje element s id="nextDay"
-  const nextDayBtn = document.getElementById("nextDay");
-  if (nextDayBtn) {
-    nextDayBtn.addEventListener("click", nextDay);
-  }
+const clockNow = () => {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 };
 
-const bgMusic = document.getElementById("bgMusic");
-const toggleBtn = document.getElementById("toggleMusic");
-let musicEnabled = false;
+function nickColor(nick) {
+  let h = 0;
+  for (const ch of nick) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 58% 55%)`;
+}
+function nickInitial(nick) {
+  const m = nick.replace(/^@/, "").replace(/[^A-Za-zÀ-ž0-9]/g, "");
+  return (m[0] || "?").toUpperCase();
+}
 
-function playBackgroundMusic() {
-  if (!musicEnabled) {
-    bgMusic.volume = 0.5;
-    bgMusic.play().then(() => {
-      musicEnabled = true;
-      toggleBtn.innerText = "⏸️ Vypnout hudbu";
-    }).catch((e) => {
-      console.error("🎵 Nelze přehrát hudbu:", e);
-    });
+// příchozí bublina s avatarem; vrací části, aby šlo doplnit objednávku a klávesnici
+function incomingBubble(nick, district, avatarText) {
+  const color = nickColor(nick);
+  const row = document.createElement("div");
+  row.className = "msg in";
+  const av = document.createElement("div");
+  av.className = "avatar";
+  av.style.setProperty("--c", color);
+  av.textContent = avatarText || nickInitial(nick);
+  const col = document.createElement("div");
+  col.className = "msg-col";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const name = document.createElement("div");
+  name.className = "bubble-name";
+  name.style.color = color;
+  name.textContent = nick;
+  if (district) {
+    const where = document.createElement("span");
+    where.className = "where";
+    where.textContent = `📍 ${district}`;
+    name.appendChild(where);
   }
+  const text = document.createElement("div");
+  text.className = "bubble-text";
+  const time = document.createElement("div");
+  time.className = "bubble-time";
+  time.textContent = clockNow();
+  bubble.append(name, text, time);
+  col.appendChild(bubble);
+  row.append(av, col);
+  return { row, col, bubble, text, time };
 }
 
+// obyčejná zpráva od zákazníka (bez objednávky)
+function customerBubble(nick, district, text) {
+  const b = incomingBubble(nick, district);
+  chatAppend(b.row);
+  typeInto(b.text, text);
+  return b;
+}
 
-function playClickSound() {
-  const audio = document.getElementById("click");
-  audio.currentTime = 0; // Začneme od začátku
-  audio.play();
+// tvoje odpověď (modrá bublina vpravo)
+function playerBubble(text) {
+  const row = document.createElement("div");
+  row.className = "msg out";
+  const col = document.createElement("div");
+  col.className = "msg-col";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const t = document.createElement("div");
+  t.className = "bubble-text";
+  t.textContent = text;
+  const time = document.createElement("div");
+  time.className = "bubble-time";
+  time.textContent = clockNow() + " ✓✓";
+  bubble.append(t, time);
+  col.appendChild(bubble);
+  row.appendChild(col);
+  return chatAppend(row);
 }
-function playPositiveSound() {
-  const audio = document.getElementById("positiveclick");
-  audio.currentTime = 0; // Začneme od začátku
-  audio.play();
+
+// systémová hláška uprostřed chatu; barva podle toho, jak dopadla
+function sysMessage(msg, extra = "") {
+  const d = document.createElement("div");
+  const tone = /^(✅|💰|🎉|🏆|🎁|🤝|😎|💈|📦)/.test(msg) ? "good"
+    : /^(❌|⚠️|🚨|😡|🚓|🚔|💀|😱|🤡|😤|🔧|🥶)/.test(msg) ? "bad" : "";
+  d.className = ("sys " + tone + " " + extra).trim();
+  d.textContent = msg;
+  return chatAppend(d);
 }
-function playNegativeSound() {
-  const audio = document.getElementById("negativeclick");
-  audio.currentTime = 0; // Začneme od začátku
-  audio.play();
+
+function logMessage(msg) {
+  sysMessage(msg, msg.startsWith("📆") ? "day" : "");
 }
 
 function logImportantMessage(msg) {
-  const log = document.getElementById("gameLog");
-  const p = document.createElement("p");
-  p.innerText = msg;
-  log.prepend(p);
-  log.scrollTop = 0;
+  sysMessage(msg, "important");
 }
 
+const ACCEPT_REPLIES = [
+  "jasně, jedu", "bude, za chvilku tam jsem", "domluveno, čekej u vchodu", "už letím 🚀",
+  "ok, dovezu", "mám tě, 10 minut", "řeš nic, jsem na cestě", "tak jo, drž se"
+];
+const DECLINE_REPLIES = [
+  "dneska ne, sorry", "teď nemůžu", "není skladem", "zkus zítra",
+  "tohle ne, kámo", "jsem mimo, ozvi se jindy", "nejde to", "hele, dneska fakt ne"
+];
 
-toggleBtn.addEventListener("click", () => {
-  if (!musicEnabled) {
-    bgMusic.volume = 0.5;
-    bgMusic.play().then(() => {
-      musicEnabled = true;
-      toggleBtn.innerText = "⏸️ Vypnout hudbu";
-    }).catch((e) => {
-      console.error("🎵 Nelze přehrát hudbu:", e);
-      alert("Hudbu nelze přehrát. Zkontrolujte nastavení prohlížeče.");
-    });
-  } else {
-    bgMusic.pause();
-    musicEnabled = false;
-    toggleBtn.innerText = "▶️ Zapnout hudbu";
+function flashPolice() {
+  document.body.classList.add("police-flash");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => document.body.classList.remove("police-flash"), 3000);
+}
+
+/* =====================================================================
+   POPULARITA, HEAT, ZÁTAHY
+   ===================================================================== */
+function addPop(d, v) {
+  S.pop[d] = clamp(S.pop[d] + v, 0, 5);
+  if (S.pop[d] >= 4) unlock("star");
+}
+function addPopAll(v) { districtNames.forEach(d => addPop(d, v)); }
+
+function heatLevel(h) { return h >= 3 ? 2 : h >= 2.5 ? 1 : 0; }
+
+function addHeat(d, v) {
+  S.police[d] = clamp((S.police[d] || 0) + v, 0, 3.5);
+  checkHeat(d);
+}
+
+function checkHeat(d) {
+  if (S.over) return;
+  const h = S.police[d];
+  if (h >= 3.5) { triggerRaid(d); return; }
+  const lvl = heatLevel(h);
+  if (lvl > S.warned[d]) {
+    logMessage(lvl === 2
+      ? `🚨 ${d}: jsi HLEDANÝ – další chyba a přijde zátah!`
+      : `👀 ${d}: policie tě sleduje.`);
   }
+  S.warned[d] = lvl;
+}
+
+function triggerRaid(d) {
+  if (S.over) return;
+  S.stats.raids++;
+  playSound("siren");
+  setTimeout(() => stopSound("siren"), 5000);
+  flashPolice();
+
+  const lost = Math.ceil(S.supply * 0.5);
+  const fine = Math.min(S.money, 10000);
+  S.supply -= lost;
+  S.money -= fine;
+  S.timeLeft = Math.max(0, S.timeLeft - 1);
+  S.police[d] = 1.5;
+  S.warned[d] = 0;
+  districtNames.forEach(x => { if (x !== d) S.police[x] = Math.max(0, S.police[x] - 0.3); });
+
+  if (S.lawyer) {
+    S.lawyer = false;
+    logImportantMessage(`⚖️ Zátah v ${d}! Přišel jsi o ${lost} g a ${fmt(fine)} Kč, ale právník tě vytáhl a nic se nepočítá. Právník je pryč.`);
+  } else {
+    S.strikes++;
+    S.lastStrikeDay = S.day;
+    if (S.strikes >= MAX_RAIDS) {
+      logImportantMessage(`🚔 Druhý zátah! Policie tě zatkla v ${d}.`);
+      updateStatus();
+      endGame("🚔 VĚZENÍ", `Policie tě zatkla v ${d}. Dva zátahy jsou na tebe moc.`);
+      return;
+    }
+    logImportantMessage(`🚨 Zátah v ${d}! Přišel jsi o ${lost} g a ${fmt(fine)} Kč. Další zátah = vězení. (${S.strikes}/${MAX_RAIDS})`);
+  }
+  unlock("raid");
+  updateStatus();
+}
+
+function checkHotDistricts() {
+  for (const d of districtNames) {
+    if (S.freq[d] >= 3 && Math.random() < 0.4) {
+      telegramFeed({ custom: `🚨 Policie si všimla častých pohybů v ${d}.` });
+      S.police[d] = Math.max(S.police[d], Math.min(3, S.police[d] + 0.5));
+      S.freq[d] = 0;
+      checkHeat(d);
+      return;
+    }
+  }
+}
+
+/* =====================================================================
+   TELEGRAM
+   ===================================================================== */
+function telegramFeed({ negative = false, nickname = null, district = null, custom = null } = {}) {
+  if (custom) {
+    // „🔴 text – @nick“ je recenze, cokoli jiného je zpráva kanálu
+    const m = custom.match(/^(🟢|🔴)\s*(.*?)(?:\s+–\s+(\S+))?$/);
+    if (m) addPost({ nick: m[3] || "@anonym", text: m[2], positive: m[1] === "🟢" });
+    else addPost({ nick: "Snow Reviews", text: custom, positive: null, avatar: "📢" });
+    return;
+  }
+  if (Math.random() >= 0.3) return;
+  const pool = telegramMessages.filter(m => negative ? m.startsWith("🔴") : !m.startsWith("🔴"));
+  addPost({ nick: nickname || "@anonym", text: rand(pool).replace(/^(🟢|🔴)\s*/, ""), positive: !negative });
+  if (district) addPop(district, negative ? -0.3 : 0.3);
+}
+
+// příspěvek v kanálu Snow Reviews: avatar, jméno, text, reakce a čas
+function addPost({ nick, text, positive, avatar }) {
+  const box = $("telegramMessages");
+  const post = document.createElement("div");
+  post.className = "post" + (positive === false ? " neg" : "");
+  const av = document.createElement("div");
+  av.className = "avatar sm";
+  av.style.setProperty("--c", nickColor(nick));
+  av.textContent = avatar || nickInitial(nick);
+  const body = document.createElement("div");
+  body.className = "post-body";
+  const name = document.createElement("div");
+  name.className = "post-name";
+  name.textContent = nick;
+  const t = document.createElement("div");
+  t.className = "post-text";
+  t.textContent = text;
+  const meta = document.createElement("div");
+  meta.className = "post-meta";
+  const react = document.createElement("span");
+  react.className = "react";
+  const n = Math.floor(Math.random() * 40) + 3;
+  react.textContent = positive === false ? `👎 ${Math.ceil(n / 4)}` : positive ? `👍 ${n}  🔥 ${Math.ceil(n / 5)}` : `👀 ${n}`;
+  const time = document.createElement("span");
+  time.textContent = clockNow();
+  meta.append(react, time);
+  body.append(name, t, meta);
+  post.append(av, body);
+  box.appendChild(post);
+  while (box.children.length > 40) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* =====================================================================
+   VĚRNOST ZÁKAZNÍKŮ
+   ===================================================================== */
+const loyaltyOf = nick => S.loyalty[nick] || 0;
+function changeLoyalty(nick, delta) {
+  const v = clamp(loyaltyOf(nick) + delta, 0, 5);
+  S.loyalty[nick] = v;
+  if (v >= 5) unlock("regular");
+  return v;
+}
+
+// zákazník, kterému jsi nevyhověl (odmítnutí, nedostatek zásob/času, ignorování)
+function disappointCustomer(nick, district) {
+  if (loyaltyOf(nick) >= 2) changeLoyalty(nick, -1);
+  if (Math.random() < NEGATIVE_PROB) telegramFeed({ negative: true, nickname: nick, district });
+}
+
+/* =====================================================================
+   NABÍDKY
+   ===================================================================== */
+function clearOfferTimers() {
+  offerTimers.forEach(clearTimeout);
+  offerTimers = [];
+  eventsPending = 0;
+  clearEventTimer();
+}
+
+function pickDistrict() {
+  const weights = districtNames.map(d =>
+    Math.max(1, S.pop[d] >= 1 ? Math.ceil(S.pop[d] * 15) : Math.ceil(S.pop[d] * 10)));
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < districtNames.length; i++) {
+    r -= weights[i];
+    if (r < 0) return districtNames[i];
+  }
+  return districtNames[0];
+}
+
+function pickCustomer(d) {
+  const list = districtCustomers[d];
+  const unused = list.filter(n => !S.usedToday.includes(n));
+  const regulars = unused.filter(n => loyaltyOf(n) >= 2);
+  const nick = regulars.length && Math.random() < 0.5
+    ? rand(regulars)
+    : rand(unused.length ? unused : list);
+  S.usedToday.push(nick);
+  return nick;
+}
+
+function offersForToday() {
+  const maxPop = Math.max(...districtNames.map(d => S.pop[d]));
+  let base = Math.min(1 + Math.floor(maxPop / 2), 5);
+  let bonus = Math.floor(maxPop);
+  const today = dayName(S.day);
+  if (today === "Pátek") { base += 3; bonus += 1; }
+  else if (today === "Sobota") { base += 2; bonus += 1; }
+  else if (["Pondělí", "Úterý", "Středa"].includes(today)) {
+    base = Math.max(1, base - 1);
+    bonus = Math.max(0, bonus - 1);
+  }
+  let n = Math.floor((base + bonus) * 0.5);
+  // rozjezd: prvních 30 dní aspoň 2 objednávky denně, než popularita roste sama
+  n = Math.max(n, S.day <= 30 ? 2 : 1);
+  return Math.min(n, 8);
+}
+
+function startDayOffers() {
+  clearOfferTimers();
+  const n = offersForToday();
+  const gap = 2200;
+  for (let i = 0; i < n; i++) offerTimers.push(setTimeout(generateOffer, 300 + i * gap));
+  if (Math.random() < 0.15) offerTimers.push(setTimeout(randomCustomerMessage, 300 + n * gap + 800));
+  scheduleEvents(300 + n * gap + 1800);
+}
+
+function generateOffer() {
+  if (S.over || S.timeLeft <= 0) return;
+
+  const grams = weightedRandomChoice([
+    { value: 1, weight: 0.40 }, { value: 2, weight: 0.30 }, { value: 3, weight: 0.20 },
+    { value: 4, weight: 0.05 }, { value: 5, weight: 0.05 }
+  ]);
+  const district = pickDistrict();
+  const nickname = pickCustomer(district);
+  const loyal = loyaltyOf(nickname) >= 2;
+
+  // cena: 78 % standard, 12 % sleva, 10 % prémiová (z toho čtvrtina je past)
+  const basePrice = customerBasePrices[grams];
+  let price = basePrice, trap = false;
+  const roll = Math.random();
+  if (roll >= 0.90) {
+    price = basePrice * (1.25 + Math.random() * 0.15);
+    trap = Math.random() < 0.25;
+  } else if (roll >= 0.78) {
+    price = basePrice * (1 - (0.05 + Math.random() * 0.10));
+  }
+  if (loyal) price *= 1 + 0.04 * loyaltyOf(nickname);
+  price = Math.round(price / 100) * 100;
+
+  const time = Math.max(0.33, round2(districts[district] + effCar().time));
+
+  if (S.timeLeft < time || S.supply < grams) {
+    // nesplněná objednávka = ušlý výdělek, dál ji netrestáme špatnou reputací
+    // (jinak by zásoby dodávané jen v pondělí rozbily popularitu)
+    const why = S.supply < grams ? "nemáš stash" : "nemáš čas";
+    logMessage(`⚠️ ${nickname} z ${district} – chtěl ${grams}g, ale ${why}. Ušlý zisk ${fmt(price)} Kč.`);
+    updateStatus();
+    return;
+  }
+
+  const messages = [
+    `hej bro, mas ${grams}? mam ${price} kc, ale specham do ${district}`,
+    `Čau, mohl bys mi prosím doručit ${grams}g do ${district}? Mám připraveno ${price} Kč.`,
+    `ty vole kamo, potrebuju snih ${grams}g, cash ready ${price}, kde se potkáme?`,
+    `zdar, hodis mi ${grams} do ${district}? mam ${price}kc, ale fakt specham`,
+    `hele, mam jen ${price}kc, jsem na mrdku na teambuildingu :DD co za to dostanu treba ${grams}?`,
+    `Bráško, dneska fakt nutně potrebuju ${grams}g třeba za ${price}, jsem v ${district}, ozvi se pls.`,
+    `yo, mas neco fresh? treba ${grams} za ${price}, ale rychle pls`,
+    `Dobrý den, rád bych si objednal ${grams}g za ${price} Kč. Je to možné?`,
+    `hej kamo, kamosz rikal ze mas kvalitu, vzal bych ${grams}g, cash ${price}kc`,
+    `cau, jsem v ${district}, hodis mi ${grams}? mam ${price}kc, ale specham`,
+    `ty kravo, potrebuju ${grams}g, jinak jsem v haji, mam ${price}kc`,
+    `Zdarec, ${grams} pls, cash ready ${price}kc, Praha jede`,
+    `cs pls ${grams} pls,za  ${price}kc, u me ${district}`,
+    `Kolik ${grams} v kolik co nejdřív a za zakolik ${price}kc ?`,
+    `Yo, kamo, ${grams}g za ${price}kc, ale fakt rychle, jsem v ${district}`,
+    `Hele, potřebuji nutně ${grams}g, mám ${price}, kde se potkáme?`,
+    `Čau, máš čas? Vzal bych ${grams}g za ${price}, jsem v ${district}.`,
+    `brasko, dneska fakt nutne potrebuju,je zima a snezi ${grams}g, cash ${price}`,
+    `hej kamo, ${grams}g pls, ale specham, jsem v ${district}, mam ${price}`,
+    `yo, mas neco na zkousku? treba ${grams}, cash ready ${price}kc`,
+    `Dobrý den, mohl byste mi doručit ${grams} do ${district}? Mám připraveno ${price} Kč.`,
+    `bro vim ze je utery ale ${grams}g by mi zachranilo den, ${price}kc na ruku`,
+    `kamo mam doma navstevu a nic k pivu... ${grams}g za ${price}kc pls ${district}`,
+    `psal bych diskretne ale jsem v ${district} a stejne to vsichni vi, ${grams}g za ${price}`,
+    `ahoj, od kolegy z prace, prej ${grams}g za ${price}kc je u tebe normal?`,
+    `hele ${grams} do ${district} a jsem tvuj clovek na veky, cash ${price}kc`,
+    `ty vole sef me zatezuje, potrebuju ${grams}g na zklidneni, ${price}kc ready`,
+    `Dobry vecer, nevite nahodou o nekom kdo by mel ${grams}g? Nabizim ${price} Kc. Dekuji.`,
+    `mam ${price}kc a zadny svedomi, kolik za ${grams}g?`,
+    `bro jedu z afterky a potrebuju ${grams}, cash ${price}kc, jsem v ${district}`,
+    `vole ja jsem uplne vyzmykanej, ${grams}g do ${district}, ${price}kc nepocitam`,
+    `hele jestli mas ${grams}g tak ti polibim ruku, mam ${price}kc`,
+    `nejde mi net, ale tobe pisu... ${grams}g za ${price}kc ${district}`,
+    `zdar ty zmrde, ${grams}g za ${price}kc, fakt nutne, mam rande :D`,
+    `pls ${grams}g, ${price}kc, jsem v ${district} za Billou, mam zelenou bundu`,
+    `mrazi me, takze potrebuju ${grams}g snehu aby mi bylo tepleji :D ${price}kc`,
+    `Dobry den, pisu ohledne inzeratu. ${grams}g za ${price} Kc, prevzeti ${district}.`,
+    `bracho ${grams}g, ${price}kc, a kdyby ses zdrzel tak se nic nedeje... skoro`,
+    `kamo promin ze pisu v takovou dobu, ${grams}g za ${price}kc?`,
+    `ta posledni davka byla fakt dobra, dalsi ${grams}g za ${price}kc do ${district} pls`,
+    `budu stat u trafiky v ${district}, ${grams}g, ${price}kc, poznas me podle krosny`,
+    `cau mam ${price}kc z brigady, ${grams}g pls, ale nepovidej to nikomu`,
+    `mel bys ${grams}g? ptam se pro kamose. kamos mi dava ${price}kc`,
+    `ahoj nechtel bys ${price}kc? ja chci ${grams}g ty chces ${price}kc, win-win`,
+    `Dobry den, zastupuji skupinu pratel, ktera by zadala ${grams}g za ${price} Kc. S pozdravem.`,
+    `jsem na homeoffice a to se neda zvladnout bez ${grams}g, ${price}kc, ${district}`,
+    `hej ${grams}g a nenech me cekat jak posledne, ${price}kc`,
+    `${district} vola. ${grams}g, ${price}kc, bez keců`,
+    `sorry za spam, ale ${grams}g za ${price}kc bych bral hned`,
+    `jsem tu novej, rikali ze ty jsi ten pravej... ${grams}g za ${price}kc ${district}`,
+    `kolega rikal ze mas ${grams}g na sklade, ja mam ${price}kc a na sklade nic, vymenime?`,
+    `tvoje auto je na ${district} vsude videt, takze ${grams}g za ${price}kc bude easy ne`,
+    `vole zrovna mi zdrazili najem, ${grams}g za ${price}kc at to prezijem`,
+    `ahojky, ${grams}g do ${district} a ${price}kc, jinak budu muset jit spat v 10 jak sasek`
+  ];
+  // stálí zákazníci píšou trochu jinak
+  const loyalMessages = [
+    `to jsem zase ja, ${grams}g jako vzdycky? ${price}kc ready`,
+    `kamo, tvuj stalej zakaznik hlasi, ${grams}g do ${district}, ${price}kc`,
+    `bez tebe bych tu Prahu nezvladl, ${grams}g za ${price}kc pls`,
+    `jako minule pls, ${grams}g a ${price}kc, ty vis kam v ${district}`,
+    `šéfe, poprosil bych klasiku. ${grams}g, ${price}kc, ${district}`,
+    `ty jsi muj nejlepsi dealer a to rikam i mamce. ${grams}g za ${price}kc`
+  ];
+
+  const offer = { nickname, district, grams, price, time, trap };
+  // cenu nikde nehodnotíme – jestli je nabídka hodně nad nebo pod cenou, musí hráč poznat sám
+  const badges = [];
+  if (loyal) badges.push(`⭐ stálý zákazník`);
+
+  playSound("notif");
+  // bublina zákazníka + shrnutí objednávky + tlačítka pod ní jako inline klávesnice v Telegramu
+  const b = incomingBubble(nickname, district);
+  const card = b.row;
+  card.classList.add("offer");
+  card.dataset.nickname = nickname;
+  card.dataset.district = district;
+  chatAppend(card);   // musí být v DOM dřív, než začne psaní
+  typeInto(b.text, loyal && Math.random() < 0.5 ? rand(loyalMessages) : rand(messages));
+
+  const order = document.createElement("div");
+  order.className = "order";
+  order.innerHTML = `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b>${fmtH(time)} h</b>`
+    + badges.map(x => ` <span class="badge">${x}</span>`).join("");
+  b.bubble.insertBefore(order, b.time);
+
+  const kb = document.createElement("div");
+  kb.className = "kb row";
+  const yes = document.createElement("button");
+  yes.className = "kb-btn good";
+  yes.textContent = "✅ Přijmout";
+  yes.onclick = () => acceptOffer(card, offer);
+  const no = document.createElement("button");
+  no.className = "kb-btn bad";
+  no.textContent = "❌ Odmítnout";
+  no.onclick = () => declineOffer(card, offer);
+  kb.append(yes, no);
+  b.col.appendChild(kb);
+  scrollChat();
+}
+
+// vyřízená nabídka: zmizí klávesnice, bublina zůstane v chatu a můžeš zákazníkovi odpovědět
+function closeOffer(card, reply) {
+  const kb = card.querySelector(".kb");
+  if (kb) kb.remove();
+  card.classList.add("closed");
+  if (reply) playerBubble(reply);
+}
+
+function failOffer(card, o, msg) {
+  closeOffer(card);
+  logMessage(msg);
+  disappointCustomer(o.nickname, o.district);
+  updateStatus();
+}
+
+function acceptOffer(card, o) {
+  if (S.over || card.dataset.done) return;
+  card.dataset.done = "1";
+
+  if (S.timeLeft < o.time) return failOffer(card, o, `❌ Nemáš dost času na doručení do ${o.district}. Nabídka propadla.`);
+  if (S.supply < o.grams) return failOffer(card, o, `❌ Nemáš dost stashe na doručení ${o.grams}g do ${o.district}. Nabídka propadla.`);
+
+  closeOffer(card, rand(ACCEPT_REPLIES));
+  S.timeLeft = round2(S.timeLeft - o.time);
+  S.supply -= o.grams;
+
+  if (o.trap) {
+    logMessage(`🚓 Past! ${o.nickname} byl převlečený policista. Zboží (${o.grams}g) je pryč a ${o.district} tě má v hledáčku.`);
+    addHeat(o.district, 1.5);
+    updateStatus();
+    return;
+  }
+
+  S.money += o.price;
+  S.salesToday = true;
+  S.accepted[o.district] = true;
+  S.idle[o.district] = 0;
+  S.freq[o.district] = (S.freq[o.district] || 0) + 1;
+  S.today.delivered++;
+  S.today.grams += o.grams;
+  S.stats.delivered++;
+  S.stats.grams += o.grams;
+  S.stats.earned += o.price;
+  addPop(o.district, 0.2);
+  unlock("first");
+
+  const before = loyaltyOf(o.nickname);
+  const after = changeLoyalty(o.nickname, 1);
+  logMessage(`✅ Doručeno. -${o.grams}g, +${fmt(o.price)} Kč`);
+  if (before < 2 && after >= 2) logMessage(`⭐ ${o.nickname} je teď stálý zákazník – platí víc a bude psát častěji.`);
+
+  telegramFeed({ nickname: o.nickname, district: o.district });
+
+  // heat se jen přičte; stav vidíš v tabulce čtvrtí a varování přijdou, až když to začne být vážné
+  addHeat(o.district, deliveryHeat(o.district, o.grams));
+  if (!S.over) checkHotDistricts();
+  updateStatus();
+}
+
+// Heat za doručení roste s množstvím, popularitou čtvrti, opakováním v jedné čtvrti
+// a nápadností auta. Rozprostři doručení po městě, ať se čtvrti stihnou zklidnit.
+function deliveryHeat(d, grams) {
+  let gain = (0.08 + 0.05 * grams) * (0.7 + S.pop[d] * 0.12)
+    * (1 + 0.15 * Math.max(0, S.freq[d] - 1)) * effCar().heat;
+  if (Math.random() < 0.25) gain += 0.5;   // někdo tě viděl
+  return round2(gain);
+}
+
+function declineOffer(card, o) {
+  if (S.over || card.dataset.done) return;
+  card.dataset.done = "1";
+  closeOffer(card, rand(DECLINE_REPLIES));
+  disappointCustomer(o.nickname, o.district);
+  updateStatus();
+}
+
+function randomCustomerMessage() {
+  if (S.over) return;
+  const d = rand(districtNames);
+  customerBubble(rand(districtCustomers[d]), d, rand(randomCustomerMessages));
+  playSound("notif");
+}
+
+/* =====================================================================
+   NÁHODNÉ EVENTY (každý má volby; některé mají důsledky později)
+   ===================================================================== */
+function addSupply(g) {
+  const room = Math.max(0, cap() - S.supply);
+  const add = Math.min(g, room);
+  S.supply += add;
+  if (add < g) logMessage(`📦 Kapacita je plná – ${g - add} g navíc propadlo.`);
+  return add;
+}
+
+const clothesEvent = (item, price) => () => ({
+  text: `🧢 Kámoš ti nabídl ${item} za ${fmt(price)} Kč. Bereš?`,
+  choices: [
+    { label: `Koupit (${fmt(price)} Kč)`, run: () => {
+      if (S.money < price) { logMessage("💸 Nemáš ani na to. Trapas."); return; }
+      S.money -= price;
+      if (Math.random() < 0.7) { addPopAll(0.3); logMessage("😎 Stylovej! Popularita +."); }
+      else { addPopAll(-1); logMessage("🤡 Tak ty si dobrej šašek že nosíš fejky"); }
+    } },
+    { label: "Zůstat lowkey", run: () => logMessage("👖 Zůstáváš lowkey.") }
+  ]
 });
+
+const EVENT_FACTORIES = [
+  () => ({
+    text: "🧼 V klubu ti z kapsy vypadlo 2g – zkusíš to najít?",
+    choices: [
+      { label: "Hledat", run: () => {
+        if (Math.random() < 0.5) { if (addSupply(2)) logMessage("🕵️‍♂️ Našel jsi to pod gaučem! Jackpot."); }
+        else { const d = rand(districtNames); logMessage(`👮 Někdo tě viděl hledat – zájem policie v ${d} ++!`); addHeat(d, 1); }
+      } },
+      { label: "Kašlat na to", run: () => logMessage("👋 Kašli na to, bude nový.") }
+    ]
+  }),
+  () => ({
+    text: "💸 Našel jsi na zemi 2000 Kč – vezmeš si je?",
+    choices: [
+      { label: "Vzít", run: () => {
+        if (Math.random() < 0.8) { S.money += 2000; logMessage("💰 Vzal jsi je – easy money."); }
+        else { S.money = Math.max(0, S.money - 1000); logMessage("🚓 Kamera tě nahrála, dostal jsi pokutu 1000 Kč."); }
+      } },
+      { label: "Nechat být", run: () => logMessage("😇 Nechal jsi je být. Karma čistá.") }
+    ]
+  }),
+  () => ({
+    text: "🧂 Napadlo tě seknout zásoby – chceš je naředit moukou?",
+    choices: [
+      { label: "Naředit", run: () => {
+        if (Math.random() < 0.5) { addSupply(2); logMessage("😏 Naředil jsi a nikdo nic nepoznal. +2 g"); }
+        else { addPopAll(-1.5); logMessage("🤮 Zákazník to poznal – popularita −1,5 všude!"); }
+      } },
+      { label: "Zůstat věrný kvalitě", run: () => logMessage("👌 Zůstal jsi věrný kvalitě.") }
+    ]
+  }),
+  () => ({
+    text: "🎂 Tvůj kámoš má narozky – dáš mu 1g jako dárek?",
+    choices: [
+      { label: "Dát 1 g", run: () => {
+        if (S.supply >= 1) { S.supply -= 1; addPopAll(0.4); logMessage("🎁 Kámoš happy – rozkecá to dál! 🌟Popularita +"); }
+        else logMessage("🤷‍♂️ Nemáš ani gram – trapas.");
+      } },
+      { label: "Nedat nic", run: () => logMessage("😒 Nedal jsi nic – zůstáváš tajemný.") }
+    ]
+  }),
+  () => ({
+    text: "📱 Našel jsi levnej burner telefon za 1000 Kč – koupíš ho?",
+    choices: [
+      { label: "Koupit (1 000 Kč)", run: () => {
+        if (S.money >= 1000) {
+          S.money -= 1000;
+          const d = rand(districtNames);
+          S.police[d] = Math.max(0, S.police[d] - 1);
+          logMessage(`📴 Vzal jsi ho – policie zmatena v ${d}.`);
+        } else logMessage("💸 Nemáš ani na levnej mobil.");
+      } },
+      { label: "Ne", run: () => logMessage("📵 Zůstáváš u starý Nokie.") }
+    ]
+  }),
+  () => ({
+    text: "🕵️ V klubu jsi slyšel drby o konkurenci – půjdeš to ověřit?",
+    choices: [
+      { label: "Ověřit", run: () => {
+        if (Math.random() < 0.4) {
+          const stolen = Math.min(S.supply, Math.floor(Math.random() * 3) + 1);
+          S.supply -= stolen;
+          logMessage(`😱 Byl to setup – ztratil jsi ${stolen}g.`);
+        } else {
+          const d = rand(districtNames);
+          addPop(d, 0.3);
+          logMessage(`🔍 Zjistil jsi, kde konkurence nestíhá. Popularita v ${d} +0,3.`);
+        }
+      } },
+      { label: "Nechat to být", run: () => logMessage("🦺 Zůstal jsi v bezpečí.") }
+    ]
+  }),
+  clothesEvent("pásek Moncler vestu", 6500),
+  clothesEvent("pásek BURBERRY (je drip!)", 5000),
+  () => {
+    const qty = Math.floor(Math.random() * 5) + 1;
+    return {
+      text: `✉️ Vyděrač: "Dovez mi ${qty}g, nebo tě udám!"`,
+      choices: [
+        { label: `Vyhovět (${qty} g, −1 h)`, run: () => {
+          if (S.supply >= qty) {
+            S.supply -= qty;
+            S.timeLeft = Math.max(0, S.timeLeft - 1);
+            logMessage(`✅ Vydírání splněno: odebral jsi ${qty}g a ztratil 1 hodinu.`);
+          } else logMessage("❌ Nemáš dost stash na splnění vydírání!");
+        } },
+        { label: "Ignorovat", run: () => {
+          if (Math.random() < 0.5) logMessage("😏 Vydírání byl blaf, nic se nestalo.");
+          else {
+            const d = rand(districtNames);
+            S.police[d] = Math.max(S.police[d], 3);
+            logMessage(`🚨 Vydírání neblafoval – policie v ${d} tě HLEDÁ!`);
+            checkHeat(d);
+          }
+        } }
+      ]
+    };
+  },
+  () => ({
+    text: "❄️ Chceš uspořádat sněhovou párty? (stálo by to 10g)",
+    choices: [
+      { label: "Uspořádat (−10 g)", run: () => {
+        if (S.supply >= 10) { S.supply -= 10; addPopAll(1); logMessage("🎉 Sněhová párty proběhla, popularita ve čtvrtích výrazně vzrostla!"); }
+        else logMessage("❌ Nemáš dost stash na sněhovou párty!");
+      } },
+      { label: "Odložit", run: () => logMessage("😐 Sněhová párty odložena.") }
+    ]
+  }),
+  // --- nové eventy s důsledky ---
+  () => ({
+    text: "🦈 Lichvář: „Půjčím ti 20 000 Kč. Za týden chci 26 000.“",
+    choices: [
+      { label: "Půjčit si 20 000 Kč", run: () => {
+        S.money += 20000;
+        S.pending.push({ type: "loan", day: S.day + 7, amount: 26000 });
+        logMessage("🦈 Půjčil sis 20 000 Kč. Za 7 dní chce lichvář 26 000 Kč.");
+      } },
+      { label: "Ne, díky", run: () => logMessage("🙅 S lichváři ses nezapletl.") }
+    ]
+  }),
+  () => ({
+    cond: () => S.supply >= 3,
+    text: "🤝 Kamarád prosí o 3g na dluh: „Za 3 dny ti dám 6 000 Kč, slibuju.“",
+    choices: [
+      { label: "Dát na dluh (−3 g)", run: () => {
+        S.supply -= 3;
+        S.pending.push({ type: "credit", day: S.day + 3, amount: 6000, nick: rand(rand(Object.values(districtCustomers))) });
+        logMessage("🤝 Dal jsi 3g na dluh. Uvidíme, jestli ti to vrátí.");
+      } },
+      { label: "Odmítnout", run: () => logMessage("🙅 Žádný dluhy.") }
+    ]
+  }),
+  () => ({
+    text: "👮 Policejní kontrola na ulici! Co uděláš?",
+    choices: [
+      { label: "Zachovat klid", run: () => {
+        const risk = clamp(S.supply / 40, 0.05, 0.6);
+        if (Math.random() < risk) {
+          const d = rand(districtNames);
+          logMessage(`🚨 Našli u tebe stash – policie v ${d} je ve střehu.`);
+          addHeat(d, 1);
+        } else logMessage("😌 Prošel jsi bez problémů.");
+      } },
+      { label: "Zdrhnout", run: () => {
+        if (Math.random() < 0.6) logMessage("🏃 Utekl jsi!");
+        else {
+          const d = rand(districtNames);
+          S.timeLeft = Math.max(0, S.timeLeft - 1);
+          logMessage(`🚨 Dohnali tě – ztratil jsi hodinu a policie v ${d} je ve střehu.`);
+          addHeat(d, 1.5);
+        }
+      } },
+      { label: "Nabídnout 500 Kč", run: () => {
+        if (S.money < 500) { logMessage("💸 Nemáš ani 500 Kč. Trapas."); return; }
+        S.money -= 500;
+        if (Math.random() < 0.8) logMessage("💵 Policajt se otočil a odešel.");
+        else {
+          const d = rand(districtNames);
+          logMessage(`🚨 Úplatek nevyšel – policie v ${d} je ve střehu.`);
+          addHeat(d, 1);
+        }
+      } }
+    ]
+  }),
+  () => {
+    const d = rand(districtNames);
+    return {
+      text: `🥶 Sergei z Wishe rozdává vzorky v ${d}. Co s tím?`,
+      choices: [
+        { label: "Přebít ho (−3 g)", run: () => {
+          if (S.supply >= 3) { S.supply -= 3; addPop(d, 0.5); logMessage(`🥊 Rozdal jsi vzorky líp než Sergei. Popularita v ${d} +0,5.`); }
+          else logMessage("🤷‍♂️ Nemáš čím přebít.");
+        } },
+        { label: "Ignorovat", run: () => { addPop(d, -0.5); logMessage(`😬 Sergei ti vzal část trhu v ${d} (−0,5).`); } }
+      ]
+    };
+  },
+
+  /* --- quicktime eventy: s `timeout` musíš stihnout odpovědět, jinak se spustí volba `fallback` --- */
+  () => ({
+    timeout: 6, fallback: 2,
+    text: "🚓 Za tebou jede policejní auto a pomalu tě dojíždí!",
+    choices: [
+      { label: "Zahnout do uličky", run: () => {
+        if (Math.random() < 0.65) logMessage("🏃 Zmizel jsi v uličce, hlídka jela dál.");
+        else {
+          const d = rand(districtNames);
+          S.timeLeft = Math.max(0, round2(S.timeLeft - 0.5));
+          logMessage(`🚨 Slepá ulička! Ztratil jsi půl hodiny a policie v ${d} je ve střehu.`);
+          addHeat(d, 1);
+        }
+      } },
+      { label: "Zrychlit", run: () => {
+        if (Math.random() < 0.4) logMessage("💨 Ujel jsi jim, ale srdce ti bije jako o závod.");
+        else { const d = rand(districtNames); logMessage(`🚨 Honička! Policie v ${d} je ve střehu.`); addHeat(d, 1.5); }
+      } },
+      { label: "Jet normálně", run: () => {
+        if (Math.random() < clamp(S.supply / 50, 0.05, 0.5)) {
+          const d = rand(districtNames);
+          logMessage(`🚔 Zastavili tě na kontrolu. Policie v ${d} je ve střehu.`);
+          addHeat(d, 1);
+        } else logMessage("😌 Jeli za tebou jen náhodou.");
+      } }
+    ]
+  }),
+  () => ({
+    timeout: 7, fallback: 0,
+    text: "🧓 Domovník tě chytil na chodbě: „A co to máte v tom batohu, mladej?“",
+    choices: [
+      { label: "„Sportovní vybavení.“", run: () => {
+        if (Math.random() < 0.7) logMessage("🏋️ Domovník kývl a šel dál.");
+        else { const d = rand(districtNames); logMessage(`🧓 Domovník to nezbaštil a volá na policii. Policie v ${d} je ve střehu.`); addHeat(d, 1); }
+      } },
+      { label: "Dát mu 1 g", run: () => {
+        if (S.supply >= 1) { S.supply -= 1; logMessage("🧓 Domovník si to vzal a od té doby se neptá."); }
+        else logMessage("🤷‍♂️ Nemáš ani gram, domovník se naštval a práskl dveřmi.");
+      } },
+      { label: "Zdrhnout po schodech", run: () => {
+        if (Math.random() < 0.5) logMessage("🏃 Utekl jsi po schodech.");
+        else { S.timeLeft = Math.max(0, round2(S.timeLeft - 0.5)); logMessage("🤕 Zakopl jsi o rohožku a ztratil půl hodiny."); }
+      } }
+    ]
+  }),
+  () => ({
+    timeout: 8, fallback: 1,
+    text: "✉️ Anonym ti píše: „Vím, kdo jsi. Vím, kde roznášíš.“",
+    choices: [
+      { label: "Změnit SIM (5 000 Kč)", run: () => {
+        if (S.money < 5000) { logMessage("💸 Nemáš ani na SIM."); return; }
+        S.money -= 5000;
+        districtNames.forEach(d => { S.police[d] = Math.max(0, S.police[d] - 0.5); });
+        logMessage("📱 SIM změněna, anonym zmizel a policie je klidnější všude.");
+      } },
+      { label: "Ignorovat", run: () => {
+        if (Math.random() < 0.35) { const d = rand(districtNames); logMessage(`🚨 Anonym to byl policajt. Policie v ${d} je ve střehu.`); addHeat(d, 1); }
+        else logMessage("😏 Asi jen blbec z diskotéky.");
+      } },
+      { label: "Odepsat „kdo je tam?“", run: () => {
+        if (Math.random() < 0.5) logMessage("🤡 Byl to kámoš, co si dělá srandu.");
+        else { const d = rand(districtNames); logMessage(`🚨 Přečetli si to i jinde. Policie v ${d} je ve střehu.`); addHeat(d, 0.5); }
+      } }
+    ]
+  }),
+  () => ({
+    cond: () => S.money >= 3000,
+    text: "🃏 Kámoš tě zve na pokrovou hru, vstupné 3 000 Kč.",
+    choices: [
+      { label: "Hrát (−3 000 Kč)", run: () => {
+        S.money -= 3000;
+        if (Math.random() < 0.45) { S.money += 8000; logMessage("🎰 Vyhrál jsi! +8 000 Kč."); }
+        else logMessage("🃏 Prohrál jsi všechno. Kámoš má nový mobil.");
+      } },
+      { label: "Ne, dík", run: () => logMessage("🙅 Raději zůstal doma.") }
+    ]
+  }),
+  () => ({
+    text: "🍕 Kurýr z Woltu tě předjel a vzal ti zákazníka!",
+    choices: [
+      { label: "Honit ho (−0,5 h)", run: () => {
+        S.timeLeft = Math.max(0, round2(S.timeLeft - 0.5));
+        addPop(rand(districtNames), 0.2);
+        logMessage("🏃 Doběhl jsi ho a zákazník si to rozmyslel. Popularita +0,2.");
+      } },
+      { label: "Nechat to být", run: () => { addPop(rand(districtNames), -0.2); logMessage("😒 Zákazník je pryč. Popularita −0,2."); } }
+    ]
+  }),
+  () => ({
+    cond: () => S.money >= 14000 && S.supply + 10 <= cap(),
+    text: "📞 Frozone píše: „Mám 10 g navíc za 14 000 Kč, ale jen teď.“",
+    choices: [
+      { label: "Koupit (14 000 Kč)", run: () => {
+        S.money -= 14000;
+        if (Math.random() < 0.3) logMessage("😡 Frozone se vypařil i s penězi. Napálil tě.");
+        else { addSupply(10); logMessage("📦 Frozone dodal. +10 g mimo pondělí."); }
+      } },
+      { label: "Ne, počkám na pondělí", run: () => logMessage("🧠 Plánuješ. Zásoby jen v pondělí.") }
+    ]
+  }),
+  () => ({
+    text: "📸 Influencerka z Letné chce s tebou natočit story.",
+    choices: [
+      { label: "Natočit", run: () => {
+        for (let i = 0; i < 3; i++) { const d = rand(districtNames); addPop(d, 0.5); S.police[d] = Math.min(3.4, S.police[d] + 0.4); }
+        logMessage("📸 Story zabrala! Popularita +0,5 ve třech čtvrtích, ale policie to taky viděla.");
+      } },
+      { label: "Odmítnout", run: () => logMessage("🙅 Žádná kamera, žádné problémy.") }
+    ]
+  }),
+  () => ({
+    cond: () => S.supply >= 2,
+    text: "🧹 Uklízečka našla v koši sáček a dívá se na tebe.",
+    choices: [
+      { label: "Zaplatit 1 000 Kč za mlčení", run: () => {
+        if (S.money >= 1000) { S.money -= 1000; logMessage("🤐 Uklízečka mlčí jako hrob."); }
+        else logMessage("💸 Nemáš ani tisícovku. Uklízečka už volá.");
+      } },
+      { label: "Zahrát to na cukr", run: () => {
+        if (Math.random() < 0.5) logMessage("🍬 „To je moučkový cukr, paní.“ Uklízečka kývla.");
+        else { const d = rand(districtNames); logMessage(`🚨 Neuvěřila ti. Policie v ${d} je ve střehu.`); addHeat(d, 1); }
+      } }
+    ]
+  }),
+  () => ({
+    text: "🍺 Kámoši tě zvou na pivo. Půjdeš?",
+    choices: [
+      { label: "Jít (−1 h)", run: () => {
+        S.timeLeft = Math.max(0, round2(S.timeLeft - 1));
+        addPopAll(0.3);
+        if (Math.random() < 0.2) { const d = rand(districtNames); logMessage(`🍻 Popularita +0,3 všude, ale po pár pivech ses prořekl. Policie v ${d} je ve střehu.`); addHeat(d, 0.5); }
+        else logMessage("🍻 Dobrý večer. Popularita +0,3 všude.");
+      } },
+      { label: "Ne, mám práci", run: () => logMessage("💼 Makáš dál.") }
+    ]
+  }),
+  () => ({
+    text: "🚖 Taxikář: „Kam to bude, šéfe? Dovezu rychle.“",
+    choices: [
+      { label: "Taxi (−800 Kč, +1 h)", run: () => {
+        if (S.money >= 800) { S.money -= 800; S.timeLeft = round2(S.timeLeft + 1); logMessage("🚖 Svezli tě bez zdržení. Dnes máš o hodinu víc."); }
+        else logMessage("💸 Nemáš na taxi.");
+      } },
+      { label: "Ne", run: () => logMessage("🚶 Půjdeš pěšky.") }
+    ]
+  }),
+  () => ({
+    cond: () => S.supply >= 8,
+    text: "💼 Nějaká „firma“ chce hned 8 g za 24 000 Kč. Trochu podezřelé.",
+    choices: [
+      { label: "Přijmout (−8 g, +24 000 Kč)", run: () => {
+        S.supply -= 8;
+        S.money += 24000;
+        if (Math.random() < 0.3) { const d = rand(districtNames); logMessage(`🚨 „Firma“ byla pod dohledem. Policie v ${d} je ve střehu.`); addHeat(d, 1.5); }
+        else logMessage("💰 Čistá práce, peníze na stole.");
+      } },
+      { label: "Odmítnout", run: () => logMessage("🧠 Raději ne, smrdí to.") }
+    ]
+  }),
+  () => ({
+    text: "📰 Novinář píše o „sněhové vlně“ v Praze a chce rozhovor.",
+    choices: [
+      { label: "Dát rozhovor (anonymně)", run: () => {
+        addPopAll(0.3);
+        districtNames.forEach(d => { S.police[d] = Math.min(3.4, S.police[d] + 0.3); });
+        logMessage("📰 Anonymní zdroj z podsvětí! Popularita +0,3, ale policie se o tebe zajímá víc.");
+      } },
+      { label: "Odmítnout", run: () => logMessage("🤫 Žádné komentáře.") }
+    ]
+  }),
+  () => ({
+    text: "😤 Zákazník píše, že poslední dávka byla slabá a chce kompenzaci.",
+    choices: [
+      { label: "Vrátit 2 500 Kč", run: () => {
+        if (S.money >= 2500) { S.money -= 2500; addPop(rand(districtNames), 0.2); logMessage("🤝 Spokojený zákazník, popularita +0,2."); }
+        else logMessage("💸 Nemáš ani 2 500 Kč.");
+      } },
+      { label: "Dát 1 g navíc", run: () => {
+        if (S.supply >= 1) { S.supply -= 1; addPop(rand(districtNames), 0.1); logMessage("🎁 Zákazník utichl. Popularita +0,1."); }
+        else logMessage("🤷‍♂️ Nemáš ani gram.");
+      } },
+      { label: "Ignorovat", run: () => {
+        addPop(rand(districtNames), -0.3);
+        telegramFeed({ custom: "🔴 Slabý, nedoporučuju. – anonym" });
+        logMessage("😒 Zákazník to rozkecal. Popularita −0,3.");
+      } }
+    ]
+  })
+];
+
+function clearEventTimer() {
+  if (eventTimer) { clearInterval(eventTimer); eventTimer = null; }
+}
+
+// Eventy se losují na začátku dne (aby je nešlo přeskočit kliknutím na „Další den“).
+// Den nejde ukončit, dokud nejsou všechny dnešní eventy zobrazené a vyřešené.
+// Event přijde nejdřív 4 dny po předchozím a pak s 30% šancí denně (průměrně jednou za ~7 dní).
+function scheduleEvents(afterMs) {
+  eventsPending = (S.day - S.lastEventDay >= 4 && Math.random() < 0.3) ? 1 : 0;
+  if (eventsPending) offerTimers.push(setTimeout(tryShowEvent, afterMs));
+}
+
+function tryShowEvent() {
+  if (S.over || eventsPending <= 0) return;
+  if (document.querySelector("#gameLog .one-take-event")) {   // jedna otevřená událost stačí, druhá počká
+    offerTimers.push(setTimeout(tryShowEvent, 1500));
+    return;
+  }
+  showEvent();
+}
+
+function showEvent() {
+  // nepoužij event, který byl nedávno (posledních 10), a quicktime event nejvýš jednou za 10 dní
+  const quickOk = S.day - S.lastQuickDay >= 10;
+  const pool = EVENT_FACTORIES
+    .map((f, idx) => ({ e: f(), idx }))
+    .filter(x => (!x.e.cond || x.e.cond()) && !S.recentEvents.includes(x.idx) && (!x.e.timeout || quickOk));
+  if (!pool.length) { eventsPending = Math.max(0, eventsPending - 1); return; }
+  const picked = rand(pool);
+  const e = picked.e;
+  S.recentEvents.push(picked.idx);
+  if (S.recentEvents.length > 10) S.recentEvents.shift();
+  S.lastEventDay = S.day;
+  if (e.timeout) S.lastQuickDay = S.day;
+
+  // událost přijde jako zpráva od „Náhody“ s inline klávesnicí; quicktime má odpočet
+  const b = incomingBubble(e.timeout ? "⚡ Quicktime" : "🎲 Událost", "", e.timeout ? "⚡" : "🎲");
+  const box = b.row;
+  box.classList.add("one-take-event");
+  b.text.textContent = e.text;
+
+  const kb = document.createElement("div");
+  kb.className = "kb";
+  b.col.appendChild(kb);
+
+  let clock = null, bar = null;
+  const finish = choice => {
+    if (S.over || box.dataset.done) return;
+    box.dataset.done = "1";
+    clearEventTimer();
+    eventsPending = Math.max(0, eventsPending - 1);
+    kb.remove();
+    if (clock) clock.remove();
+    if (bar) bar.remove();
+    box.classList.remove("one-take-event");   // vyřízeno, den už jde ukončit
+    playerBubble(choice.label);
+    choice.run();
+    updateStatus();
+  };
+  e.choices.forEach(c => {
+    const btn = document.createElement("button");
+    btn.className = "kb-btn";
+    btn.textContent = c.label;
+    btn.onclick = () => finish(c);
+    kb.appendChild(btn);
+  });
+
+  if (e.timeout) {
+    let left = e.timeout;
+    clock = document.createElement("div");
+    clock.className = "event-clock bubble-time";
+    clock.textContent = `⏳ ${left} s – rozhodni se rychle!`;
+    bar = document.createElement("div");
+    bar.className = "timer-bar";
+    const fill = document.createElement("span");
+    fill.style.transition = `width ${e.timeout}s linear`;
+    bar.appendChild(fill);
+    b.bubble.insertBefore(clock, b.time);
+    b.bubble.insertBefore(bar, b.time);
+    requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = "0%"; }));
+    clearEventTimer();
+    eventTimer = setInterval(() => {
+      if (!box.isConnected) { clearEventTimer(); return; }
+      left--;
+      if (left <= 0) {
+        logMessage("⏱️ Nestihl jsi se rozhodnout, jednal jsi instinktivně.");
+        finish(e.choices[e.fallback]);
+      } else clock.textContent = `⏳ ${left} s – rozhodni se rychle!`;
+    }, 1000);
+  }
+  chatAppend(box);
+  playSound("notif");
+}
+
+// důsledky eventů, které přijdou o pár dní později
+function processPending() {
+  const due = S.pending.filter(p => p.day <= S.day);
+  S.pending = S.pending.filter(p => p.day > S.day);
+  due.forEach(p => {
+    if (p.type === "loan") {
+      if (S.money >= p.amount) {
+        S.money -= p.amount;
+        logImportantMessage(`🦈 Lichvář si přišel pro ${fmt(p.amount)} Kč. Zaplaceno.`);
+      } else {
+        const missing = p.amount - S.money;
+        S.money = 0;
+        S.debt += Math.round(missing * 1.1);
+        const d = rand(districtNames);
+        logImportantMessage(`🦈 Lichvář nedostal všechno. Zbývá ${fmt(Math.round(missing * 1.1))} Kč dluhu (přičte se k nájmu) a rozkřiklo se to v ${d}.`);
+        addHeat(d, 1);
+      }
+    } else if (p.type === "credit") {
+      if (Math.random() < 0.75) {
+        S.money += p.amount;
+        logImportantMessage(`🤝 Kamarád to vrátil: +${fmt(p.amount)} Kč.`);
+      } else {
+        logImportantMessage("😤 Kamarád se vypařil i s tvým zbožím. Dluh se nevrátil.");
+        telegramFeed({ negative: true, nickname: p.nick });
+      }
+    }
+  });
+}
+
+/* =====================================================================
+   DODAVATELÉ, AUTA, ZÁZEMÍ, ZMATENÍ POLICIE
+   ===================================================================== */
+function supplierMult(name, opt) {
+  if (name === "Ledovec") return opt.grams >= 50 ? 0.88 : 1.05;
+  return SUPPLIERS[name].mult;
+}
+
+function refreshSuppliers() {
+  S.market = round2(0.9 + Math.random() * 0.2);
+  S.supplierOffers = [];
+  const names = Object.keys(SUPPLIERS).sort(() => Math.random() - 0.5).slice(0, 3);
+  names.forEach(name => {
+    const opts = SUPPLY_OPTIONS.slice().sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a.grams - b.grams);
+    opts.forEach(o => {
+      const price = Math.round(o.basePrice * supplierMult(name, o) * S.market * (0.92 + Math.random() * 0.16) / 100) * 100;
+      S.supplierOffers.push({ id: ++S.seq, supplier: name, grams: o.grams, price, note: SUPPLIERS[name].note });
+    });
+  });
+
+  // záchranná síť: nemáš skoro nic a nemáš ani na nejlevnější nabídku -> @cmoud ti půjčí na dluh
+  const cheapest = Math.min(...S.supplierOffers.map(o => o.price));
+  if (S.supply < 2 && S.money < cheapest && S.debt < rentFor(S.day)) {
+    S.supplierOffers.push({
+      id: ++S.seq, supplier: "@cmoud", grams: 3, price: 0, debt: 5000,
+      note: "starý známý, půjčí ti na dluh (5 000 Kč se přičte k nájmu)"
+    });
+  }
+}
+
+const daysToMonday = () => (7 - ((S.day - 1) % 7)) % 7;
+
+function buyStock(price, grams, supplierName, offerId) {
+  if (S.over) return false;
+  const offer = S.supplierOffers.find(o => o.id === offerId);
+  if (S.money < price) { logMessage("❌ Nemáš dost peněz."); return false; }
+  if (S.supply + grams > cap()) {
+    logMessage(`❌ Nevejde se ti to – kapacita je ${cap()} g (máš ${S.supply} g). Vylepši si zázemí.`);
+    return false;
+  }
+  S.money -= price;
+  if (offer && offer.debt) {
+    S.debt += offer.debt;
+    logMessage(`🤝 ${supplierName} ti půjčil ${grams}g na dluh (+${fmt(offer.debt)} Kč k nájmu).`);
+  }
+  let got = grams;
+  const sup = SUPPLIERS[supplierName];
+  if (sup && Math.random() < sup.scam) {
+    got = Math.max(1, Math.ceil(grams * 0.6));
+    logMessage(`😡 ${supplierName} tě ošidil – za ${fmt(price)} Kč jsi dostal jen ${got}g!`);
+  } else {
+    logMessage(`✅ ${supplierName}: koupil jsi ${got}g za ${fmt(price)} Kč.`);
+  }
+  S.supply += got;
+  if (offerId) S.supplierOffers = S.supplierOffers.filter(o => o.id !== offerId);
+  updateStatus();
+  return true;
+}
+
+function renderSuppliers() {
+  const box = $("supplierPanel");
+  box.innerHTML = "";
+  // zelená tečka na záložce, když dodavatelé zrovna jsou
+  document.querySelector('#shopTabs .tab[data-tab="supplierPanel"]').classList.toggle("has-offers", S.supplierOffers.length > 0);
+  const title = document.createElement("strong");
+  const pct = Math.round((S.market - 1) * 100);
+  title.textContent = S.supplierOffers.length
+    ? `📦 Dodavatelé jsou tady jen DNES · trh ${pct >= 0 ? "+" : ""}${pct} %`
+    : "📦 Dodavatelé";
+  box.appendChild(title);
+  const capLine = document.createElement("div");
+  capLine.className = "hint";
+  capLine.textContent = `Kapacita: ${S.supply}/${cap()} g (${CAPACITY[S.capLevel].name})`;
+  box.appendChild(capLine);
+
+  if (!S.supplierOffers.length) {
+    const toMonday = daysToMonday();
+    const none = document.createElement("div");
+    none.className = "row-label";
+    none.textContent = dayName(S.day) === "Pondělí"
+      ? "Všechno vykoupeno. Další dodavatelé přijdou příští pondělí."
+      : `Dnes nikdo nevozí. Další dodavatelé v pondělí (za ${toMonday} ${toMonday === 1 ? "den" : toMonday < 5 ? "dny" : "dní"}). Plánuj zásoby!`;
+    box.appendChild(none);
+  }
+
+  const bySupplier = {};
+  S.supplierOffers.forEach(o => (bySupplier[o.supplier] = bySupplier[o.supplier] || []).push(o));
+  Object.keys(bySupplier).forEach(name => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const label = document.createElement("div");
+    label.className = "row-label";
+    label.textContent = `${name} – ${bySupplier[name][0].note}`;
+    row.appendChild(label);
+    bySupplier[name].forEach(o => {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.textContent = o.debt ? `${o.grams} g na dluh` : `${o.grams} g – ${fmt(o.price)} Kč`;
+      b.disabled = S.money < o.price;
+      b.onclick = () => buyStock(o.price, o.grams, name, o.id);
+      row.appendChild(b);
+    });
+    box.appendChild(row);
+  });
+}
+
+function renderCars() {
+  const box = $("carOptions");
+  box.innerHTML = "";
+  const cur = carByName(S.car);
+  const title = document.createElement("strong");
+  title.textContent = "🚗 Auta";
+  box.appendChild(title);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "Rychlejší doručení a popularita, ale víc nápadné pro policii a platíš provoz každý den.";
+  box.appendChild(hint);
+  const better = CARS.filter(c => c.price > cur.price);
+  if (!better.length) {
+    const d = document.createElement("div");
+    d.textContent = "Máš nejlepší auto, které se dá koupit.";
+    box.appendChild(d);
+  }
+  better.forEach(car => {
+    const saves = cur.time - car.time;
+    const row = document.createElement("div");
+    row.className = "row";
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    btn.textContent = `${car.name} – ${fmt(car.price)} Kč`;
+    btn.disabled = S.money < car.price;
+    btn.onclick = () => {
+      if (S.over || S.money < car.price) return;
+      S.money -= car.price;
+      S.car = car.name;
+      S.carDown = false;
+      addPopAll(car.pop);
+      logMessage(`✅ Koupil jsi ${car.name}. Popularita +${car.pop}, provoz ${fmt(car.upkeep)} Kč/den od zítřka.`);
+      if (car.name === "🏎️ BMW M4") unlock("m4");
+      updateStatus();
+    };
+    row.appendChild(btn);
+    const stats = document.createElement("span");
+    stats.className = "row-label";
+    stats.textContent = `⏱️ −${fmtH(saves)} h na doručení · 🌟 +${car.pop} · 🚨 heat ×${car.heat} · 🔧 ${fmt(car.upkeep)} Kč/den – ${car.note}`;
+    row.appendChild(stats);
+    box.appendChild(row);
+  });
+}
+
+function renderUpgrades() {
+  const box = $("upgradeRow");
+  box.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "🏠 Zázemí";
+  box.appendChild(title);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "Kapacita stashe, právník na zátahy a kurýr, který ti dá víc času.";
+  box.appendChild(hint);
+
+  const add = (text, price, tooltip, fn) => {
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = `${text} – ${fmt(price)} Kč`;
+    b.title = tooltip;
+    b.disabled = S.money < price;
+    b.onclick = () => {
+      if (S.over || S.money < price) return;
+      S.money -= price;
+      fn();
+      updateStatus();
+    };
+    box.appendChild(b);
+  };
+
+  if (S.capLevel < CAPACITY.length - 1) {
+    const next = CAPACITY[S.capLevel + 1];
+    add(`📦 ${next.name} (${next.cap} g)`, next.price, `Zvýší kapacitu stashe z ${cap()} g na ${next.cap} g.`, () => {
+      S.capLevel++;
+      logMessage(`📦 Nové zázemí: ${next.name}, kapacita ${next.cap} g.`);
+    });
+  }
+  if (!S.lawyer) {
+    add("⚖️ Právník", LAWYER_PRICE, "Jednou tě zachrání při zátahu: zátah se nezapočítá do vězení.", () => {
+      S.lawyer = true;
+      logMessage("⚖️ Právník je na telefonu. Příští zátah ti nezapočítá.");
+    });
+  }
+  if (S.runners < RUNNERS.length) {
+    const r = RUNNERS[S.runners];
+    add(`🏃 Kurýr #${S.runners + 1} (+1 h denně)`, r.price, `Provoz ${fmt(r.upkeep)} Kč denně. Když na něj nebudou peníze, odejde.`, () => {
+      S.runners++;
+      logMessage(`🏃 Najal jsi kurýra. Od zítřka +1 h denně (provoz ${fmt(runnerUpkeep())} Kč/den).`);
+    });
+  }
+  if (S.lawyer && S.runners >= RUNNERS.length && S.capLevel >= CAPACITY.length - 1) {
+    const d = document.createElement("div");
+    d.textContent = "Všechno vylepšeno.";
+    box.appendChild(d);
+  }
+}
+
+function renderSecurity() {
+  const box = $("securityRow");
+  box.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "📡 Zmatení policie";
+  box.appendChild(title);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = S.secUsed
+    ? "SIM, mobil a úplatek: dnes už jsi jednu věc použil. Holič má vlastní týdenní pauzu."
+    : "Snižuje heat. SIM, mobil a úplatek: jedna věc denně. Holič: jednou týdně, nezávisle na ostatních.";
+  box.appendChild(hint);
+
+  const barberWait = S.lastHaircutDay !== null ? S.lastHaircutDay + 7 - S.day : 0;
+
+  // daily = sdílí denní limit (jedna věc denně); jinak platí jen vlastní podmínka (extraDisabled)
+  const add = (text, cost, tooltip, daily, extraDisabled, fn) => {
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = `${text} – ${fmt(cost)} Kč`;
+    b.title = tooltip;
+    b.disabled = (daily && S.secUsed) || S.money < cost || extraDisabled;
+    b.onclick = () => {
+      if (S.over || (daily && S.secUsed) || S.money < cost || extraDisabled) return;
+      S.money -= cost;
+      if (daily) S.secUsed = true;
+      fn();
+      updateStatus();
+    };
+    box.appendChild(b);
+  };
+
+  add(barberWait > 0 ? `💈 Holič (za ${barberWait} d)` : "💈 Holič", 2000,
+    barberWait > 0 ? `Vlasy ti ještě musejí dorůst (${barberWait} dní).` : "Jednou týdně: popularita +0,1 a heat −0,3 všude.",
+    false, barberWait > 0, () => {
+      S.lastHaircutDay = S.day;
+      addPopAll(0.1);
+      districtNames.forEach(d => { S.police[d] = Math.max(0, S.police[d] - 0.3); });
+      logMessage("💈 Nový sestřih – popularita mírně vzrostla a policie je trochu klidnější.");
+    });
+  add("📱 Změnit SIM", 5000, "Heat −0,6 ve všech čtvrtích.", true, false, () => {
+    districtNames.forEach(d => { S.police[d] = Math.max(0, S.police[d] - 0.6); });
+    logMessage("📱 SIM změněna – policie ztrácí stopu.");
+  });
+  add("📲 Nový mobil", 25000, "Heat −1 ve všech čtvrtích.", true, false, () => {
+    districtNames.forEach(d => { S.police[d] = Math.max(0, S.police[d] - 1); });
+    logMessage("📲 Nový telefon – policie nemá stopy.");
+  });
+  add("💵 Úplatek", 75000, "Heat na nulu ve všech čtvrtích.", true, false, () => {
+    districtNames.forEach(d => { S.police[d] = 0; });
+    logMessage("💵 Policie podplacena – hledanost vynulována.");
+  });
+}
+
+/* =====================================================================
+   STATUS A TABULKA ČTVRTÍ
+   ===================================================================== */
+function renderDistrictTable() {
+  const rows = districtNames.map(d => {
+    const pop = S.pop[d];
+    const h = S.police[d] || 0;
+    const level = policeLevels[Math.min(3, Math.floor(h))];
+    let popIcon = "🕳️", popLabel = "Neznámý";
+    if (pop >= 4) { popIcon = "🔥"; popLabel = "Hvězda"; }
+    else if (pop >= 2) { popIcon = "🌟"; popLabel = "Známý"; }
+    else if (pop >= 1) { popIcon = "📦"; popLabel = "Místní"; }
+    let policeIcon = "🕵️", barColor = "#3fae6a";
+    if (h >= 3) { policeIcon = "🚨"; barColor = "#e5484d"; }
+    else if (h >= 2) { policeIcon = "👀"; barColor = "#f5a524"; }
+    else if (h >= 1) { barColor = "#c9b83a"; }
+    const popPct = Math.max(4, pop / 5 * 100);
+    const heatPct = Math.max(4, h / 3.5 * 100);
+    return `<div class="district">
+      <div>${d}</div>
+      <div class="meter" title="Popularita"><span style="width:${popPct}%;background:#2f7fc4"></span><em>${popIcon} ${popLabel}</em></div>
+      <div class="meter" title="Policie"><span style="width:${heatPct}%;background:${barColor}"></span><em>${policeIcon} ${level}</em></div>
+    </div>`;
+  }).join("");
+  $("districtTableContainer").innerHTML = `
+    <div class="district d-head"><div>Čtvrť</div><div>🌟 Popularita</div><div>🚨 Policie</div></div>
+    ${rows}`;
+}
+
+function daysToRent() { return (30 - (S.day % 30)) % 30; }
+
+function updateStatus() {
+  if (!S) return;
+  // po snížení heatu se může varování zase "odemknout"
+  districtNames.forEach(d => { S.warned[d] = Math.min(S.warned[d], heatLevel(S.police[d])); });
+
+  const toRent = daysToRent();
+  const rentAmount = rentFor(S.day + toRent) + S.debt;
+  const stashWarn = S.supply === 0 ? " warn" : "";
+  $("status").innerHTML = `
+    <div class="pill"><span class="pi">📅</span><b>${dayName(S.day)}</b><small>den ${S.day}</small></div>
+    <div class="pill money"><span class="pi">💰</span><b>${fmt(S.money)} Kč</b></div>
+    <div class="pill${stashWarn}"><span class="pi">❄️</span><b>${S.supply}/${cap()} g</b></div>
+    <div class="pill${S.timeLeft <= 0 ? " warn" : ""}"><span class="pi">⏱️</span><b>${fmtH(S.timeLeft)} h</b></div>`;
+
+  const pct = Math.min(100, S.money / GOAL_MONEY * 100);
+  const chips = [
+    `<span class="chip${S.strikes ? " warn" : ""}">⚖️ zátahy ${S.strikes}/${MAX_RAIDS}${S.lawyer ? " · právník ✔" : ""}</span>`,
+    `<span class="chip${toRent <= 5 ? " warn" : ""}">🏚️ ${toRent === 0 ? "nájem dnes" : `nájem za ${toRent} d`} · ${fmt(rentAmount)} Kč</span>`
+  ];
+  if (S.debt > 0) chips.push(`<span class="chip bad">💳 dluh ${fmt(S.debt)} Kč</span>`);
+  $("goalBox").innerHTML = `
+    <div class="goal-top"><span>🎯 Cíl: ${fmt(GOAL_MONEY)} Kč${S.endless ? " (splněno)" : ""}</span><b>${pct.toFixed(pct < 10 ? 1 : 0)} %</b></div>
+    <div class="goal-bar"><span style="width:${pct}%"></span></div>
+    <div class="chips">${chips.join("")}</div>`;
+
+  const car = carByName(S.car);
+  const runner = S.runners ? ` · 🏃 kurýři: ${S.runners}` : "";
+  const upkeep = car.upkeep ? ` · 🔧 ${fmt(car.upkeep)} Kč/den` : "";
+  const down = S.carDown ? " · ⚠️ auto stojí (nezaplacený provoz), jedeš tramvají" : "";
+  $("carInfo").textContent = `🚗 ${S.car} · doručení ${car.time >= 0 ? "+" : ""}${fmtH(car.time)} h · policie ×${car.heat}${upkeep}${runner}${down}`;
+
+  // odběratelé kanálu rostou s tvou slávou
+  const subs = Math.round(1200 + S.stats.delivered * 41 + districtNames.reduce((a, d) => a + S.pop[d], 0) * 220);
+  $("subsCount").textContent = `kanál · ${fmt(subs)} odběratelů`;
+
+  renderDistrictTable();
+  renderSecurity();
+  renderCars();
+  renderUpgrades();
+  renderSuppliers();
+
+  if (!S.over && !S.won && !S.endless && S.money >= GOAL_MONEY) victory();
+}
+
+/* =====================================================================
+   KONEC HRY
+   ===================================================================== */
+function showEnd(title, text, canContinue) {
+  clearOfferTimers();
+  $("endTitle").textContent = title;
+  $("endText").textContent = text;
+  $("endStats").innerHTML = `
+    📅 Dní přežito: ${S.day}<br>
+    📦 Doručených objednávek: ${S.stats.delivered} (${S.stats.grams} g)<br>
+    💰 Celkem vyděláno: ${fmt(S.stats.earned)} Kč<br>
+    🚨 Zátahů: ${S.stats.raids}<br>
+    🏆 Achievementy: ${unlocked.size}/${Object.keys(ACHIEVEMENTS).length}`;
+  $("endContinue").style.display = canContinue ? "" : "none";
+  $("endScreen").style.display = "flex";
+}
+
+function endGame(title, text) {
+  S.over = true;
+  clearSave();
+  showEnd(title, text, false);
+}
+
+function victory() {
+  S.won = true;
+  unlock("rich");
+  clearOfferTimers();
+  showEnd("🏆 VYHRÁL JSI!", `Našetřil jsi ${fmt(GOAL_MONEY)} Kč za ${S.day} dní. Čas zmizet z Prahy… nebo to ještě chvíli protáhnout.`, true);
+}
+
+function continueAfterWin() {
+  S.endless = true;
+  $("endScreen").style.display = "none";
+  updateStatus();
+  saveGame();
+}
+
+/* =====================================================================
+   DENNÍ PŘECHOD
+   ===================================================================== */
+function payRent() {
+  const rent = rentFor(S.day) + S.debt;
+  if (S.money >= rent) {
+    S.money -= rent;
+    S.debt = 0;
+    logImportantMessage(`🏚️ Platíš nájem: −${fmt(rent)} Kč. Praha není levná...`);
+    unlock("month");
+    return true;
+  }
+  // nezaplacený nájem: majitel vezme až 7 g a zbytek se mění v dluh (+10 %)
+  const taken = Math.min(S.supply, 7);
+  S.supply -= taken;
+  S.debt = Math.round(rent * 1.1);
+  if (S.debt > rentFor(S.day) * 2.5) {
+    updateStatus();
+    endGame("💀 VYHOZEN", "Dluhy za nájem ti přerostly přes hlavu – majitel bytu tě vyhodil a odstěhoval ses do Brna.");
+    return false;
+  }
+  logImportantMessage(`😡 Nemáš na nájem (${fmt(rent)} Kč)! Majitel si vzal ${taken}g ze stashe a dluh se zvedl na ${fmt(S.debt)} Kč. Příště tě vyhodí, pokud ho nesplatíš.`);
+  return true;
+}
+
+function nextDay() {
+  if (S.over) return;
+  // událost se nedá přeskočit: nejdřív ji musíš vyřešit (nebo dojde čas u quicktime eventu)
+  if (document.querySelector("#gameLog .one-take-event")) {
+    logMessage("❗ Nejdřív vyřeš událost, pak půjdeš spát.");
+    return;
+  }
+  if (eventsPending > 0) {
+    logMessage("⏳ Dnes se ještě něco stane – chvilku počkej.");
+    return;
+  }
+  $("nextDayBtn").classList.remove("pulse");
+  clearOfferTimers();
+
+  // neodpovězené nabídky = zklamaní zákazníci
+  document.querySelectorAll("#gameLog .offer").forEach(card => {
+    if (!card.dataset.done) disappointCustomer(card.dataset.nickname, card.dataset.district);
+  });
+
+  // souhrn dne
+  const net = S.money - S.today.startMoney;
+  const summary = S.today.delivered
+    ? `📊 Den ${S.day}: ${S.today.delivered}× doručeno (${S.today.grams} g), peníze ${net >= 0 ? "+" : ""}${fmt(net)} Kč`
+    : `📊 Den ${S.day}: nic jsi nedoručil, peníze ${net >= 0 ? "+" : ""}${fmt(net)} Kč`;
+
+  // trh a policie: čtvrť bez doručení vychládá a ztrácí popularitu (konkurence)
+  // heat pomalu klesá jen tam, kam nedoručuješ: −0,05 denně, po 3 klidných dnech −0,15 denně
+  const lost = [];
+  districtNames.forEach(d => {
+    if (S.accepted[d]) return;
+    S.idle[d]++;
+    S.police[d] = Math.max(0, S.police[d] - (S.idle[d] >= 3 ? 0.15 : 0.05));
+    if (S.idle[d] >= 3 && S.pop[d] > 0.5) {
+      S.pop[d] = Math.max(0.5, S.pop[d] - (S.idle[d] >= 6 ? 0.3 : 0.15));
+      lost.push(d);
+    }
+  });
+
+  // policejní akce: čím známější čtvrť, tím větší šance, že policie posílí hlídky
+  let policeNote = null, policeTarget = null;
+  if (Math.random() < 0.15) {
+    const weights = districtNames.map(d => 0.3 + S.pop[d]);
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    let target = districtNames[0];
+    for (let i = 0; i < districtNames.length; i++) { r -= weights[i]; if (r < 0) { target = districtNames[i]; break; } }
+    S.police[target] = Math.min(3.4, S.police[target] + 0.6);
+    policeTarget = target;
+    policeNote = `🚓 Policie posílila hlídky v ${target}.`;
+  }
+
+  // nový den
+  S.day++;
+  S.accepted = {};
+  S.usedToday = [];
+  S.salesToday = false;
+  S.secUsed = false;
+  districtNames.forEach(d => { S.freq[d] = 0; });
+  S.timeLeft = 4 + S.runners;
+
+  $("gameLog").innerHTML = "";
+  logMessage(`📆 ${dayName(S.day)} – Začíná den ${S.day}`);
+  logMessage(summary);
+  if (lost.length) logMessage(`🥶 Konkurence ti zabírá trh: ${lost.join(", ")}.`);
+  if (policeNote) { logMessage(policeNote); checkHeat(policeTarget); }
+
+  S.today = { delivered: 0, grams: 0, startMoney: S.money };
+
+  // starý záznam o zátahu se promlčí
+  if (S.strikes > 0 && S.day - S.lastStrikeDay >= 20) {
+    S.strikes--;
+    S.lastStrikeDay = S.day;
+    logMessage("⚖️ Starý záznam o zátahu se promlčel.");
+  }
+
+  processPending();
+
+  // provoz kurýrů
+  if (S.runners > 0) {
+    const upkeep = runnerUpkeep();
+    if (S.money >= upkeep) S.money -= upkeep;
+    else {
+      S.runners--;
+      S.timeLeft = 4 + S.runners;
+      logMessage("🏃 Nemáš na výplatu – jeden kurýr odešel.");
+    }
+  }
+
+  // provoz auta: bez peněz auto stojí a jedeš tramvají
+  S.carDown = false;
+  const car = carByName(S.car);
+  if (car.upkeep > 0) {
+    if (S.money >= car.upkeep) S.money -= car.upkeep;
+    else {
+      S.carDown = true;
+      logMessage(`🔧 Nemáš na provoz auta (${fmt(car.upkeep)} Kč) – dnes jedeš tramvají.`);
+    }
+  }
+
+  // dodavatelé jsou jen v pondělí a jen ten den: zásoby se musí plánovat na týden
+  if (dayName(S.day) === "Pondělí") {
+    refreshSuppliers();
+    showTab("supplierPanel");
+    logImportantMessage("📦 Pondělí – dodavatelé jsou tady, ale jen DNES. Nakup na celý týden!");
+  } else {
+    S.supplierOffers = [];
+    if (dayName(S.day) === "Neděle") {
+      logMessage(`📦 Zítra přijedou dodavatelé. Máš ${S.supply}/${cap()} g a ${fmt(S.money)} Kč – nezapomeň na peníze.`);
+    }
+  }
+
+  if (S.day % 30 === 25) {
+    logImportantMessage("📱 Majitel bytu: „Doufám, že tenhle měsíc zaplatíš včas, za 5 dní si přijdu“");
+    logImportantMessage(`🏚️ Za 5 dní je nájem – ${fmt(rentFor(S.day + 5) + S.debt)} Kč. Pokud nebudeš mít na zaplacení, majitel ti vezme stash!`);
+  }
+  if (S.day % 30 === 29) logImportantMessage(`🏚️ Nezapomeň, zítra se platí nájem! ${fmt(rentFor(S.day + 1) + S.debt)} Kč!`);
+  if (S.day % 30 === 0 && !payRent()) return;
+
+  updateStatus();
+  if (S.over) return;
+  saveGame();
+  startDayOffers();
+}
+
+/* =====================================================================
+   START, NAČTENÍ, HUDBA
+   ===================================================================== */
+function resetUi() {
+  clearOfferTimers();
+  stopSound("siren");
+  document.body.classList.remove("police-flash");
+  $("endScreen").style.display = "none";
+  $("gameLog").innerHTML = "";
+  $("telegramMessages").innerHTML = "";
+}
+
+function startNewGame() {
+  clearSave();
+  S = newState();
+  refreshSuppliers();
+  resetUi();
+  $("introScreen").style.display = "none";
+  playBackgroundMusic();
+  playSound("notif");
+  updateStatus();
+  customerBubble("@cmoud", "", "Ahoj, já končím takže předávám svoje řemeslo, dal jsem kontakt na tebe pár lidem co vím, že jsou v pohodě. Taky jsem ti nechal 2 bůrky na začátek, hodně štěstí!");
+  setTimeout(() => {
+    if (S && !S.over && S.day === 1) {
+      logMessage("👉 Až si to přečteš, klikni na ➡️ Další den – tím začnou chodit objednávky.");
+    }
+  }, 2800);
+  $("nextDayBtn").classList.add("pulse");
+  saveGame();
+}
+
+function continueGame() {
+  const loaded = loadGame();
+  if (!loaded) { startNewGame(); return; }
+  S = loaded;
+  resetUi();
+  $("introScreen").style.display = "none";
+  playBackgroundMusic();
+  logMessage(`💾 Hra načtena – ${dayName(S.day)}, den ${S.day}.`);
+  updateStatus();
+  startDayOffers();
+}
+
+// záložky obchodu: Dodavatelé / Auta / Zázemí / Policie
+function showTab(id) {
+  document.querySelectorAll(".shop .tab-panel").forEach(p => p.classList.toggle("active", p.id === id));
+  document.querySelectorAll("#shopTabs .tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id));
+}
+
+function toggleHowToPlay() {
+  $("howToPlay").classList.toggle("open");
+}
+
+function playBackgroundMusic() {
+  const bg = $("bgMusic");
+  if (musicEnabled || !bg) return;
+  bg.volume = 0.5;
+  const p = bg.play();
+  if (p && p.then) {
+    p.then(() => {
+      musicEnabled = true;
+      $("toggleMusic").textContent = "🔊 Hudba: zap";
+    }).catch(e => console.error("🎵 Nelze přehrát hudbu:", e));
+  }
+}
+
+function init() {
+  $("versionTag").textContent = "v" + VERSION;
+  S = newState();           // jen aby se dalo vykreslit UI za úvodní obrazovkou
+  refreshSuppliers();
+  updateStatus();
+  logMessage(`💬 Vítej v Sněhovém Dealerovi – verze ${VERSION}`);
+
+  if (loadGame()) $("continueBtn").style.display = "";
+
+  $("toggleMusic").addEventListener("click", () => {
+    const bg = $("bgMusic");
+    if (!musicEnabled) {
+      bg.volume = 0.5;
+      bg.play().then(() => {
+        musicEnabled = true;
+        $("toggleMusic").textContent = "🔊 Hudba: zap";
+      }).catch(e => {
+        console.error("🎵 Nelze přehrát hudbu:", e);
+        alert("Hudbu nelze přehrát. Zkontrolujte nastavení prohlížeče.");
+      });
+    } else {
+      bg.pause();
+      musicEnabled = false;
+      $("toggleMusic").textContent = "🔇 Hudba: vyp";
+    }
+  });
+}
+
+// funkce volané z HTML (onclick)
+window.startNewGame = startNewGame;
+window.continueGame = continueGame;
+window.continueAfterWin = continueAfterWin;
+window.toggleHowToPlay = toggleHowToPlay;
+window.showTab = showTab;
+window.nextDay = nextDay;
+
+init();
