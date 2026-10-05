@@ -183,11 +183,26 @@
     .sys.day { background: #22364a; color: #cfe3f7; font-weight: 600; margin-top: 10px; }
     .sys.important { border: 1px solid #f5a52455; color: #ffd48a; }
 
+    .ghost { opacity: 0; }
+    .order .t.far { color: var(--bad); }
     .one-take-event .bubble { border-left: 3px solid var(--warn); }
     .one-take-event .bubble-name { color: var(--warn); }
     .timer-bar { height: 4px; background: #0f1923; border-radius: 2px; margin-top: 6px; overflow: hidden; }
     .timer-bar span { display: block; height: 100%; width: 100%; background: var(--warn); }
 
+    .chat { position: relative; }
+    .scroll-down {
+      position: absolute; right: 16px; bottom: 74px; z-index: 5;
+      display: flex; align-items: center; gap: 6px;
+      background: var(--panel2); color: var(--accent); border: 1px solid #2c4660; border-radius: 999px;
+      padding: 8px 14px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+      animation: pop 0.2s ease-out;
+    }
+    .scroll-down:hover { background: #2a3e52; }
+    #unreadCount:not(:empty) {
+      background: var(--accent); color: #0b141e; border-radius: 999px; min-width: 20px; height: 20px;
+      display: grid; place-items: center; font-size: 0.75rem; padding: 0 6px;
+    }
     .composer { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--panel); border-top: 1px solid var(--line); }
     .composer-fake { flex: 1; background: #0f1923; color: #4d5f72; padding: 10px 16px; border-radius: 999px; font-size: 0.9rem; user-select: none; }
     .send-btn {
@@ -247,6 +262,30 @@
     .post-meta { display: flex; justify-content: space-between; gap: 14px; margin-top: 4px; font-size: 0.7rem; color: var(--muted); }
     .react { background: #0f1923; border-radius: 999px; padding: 1px 8px; color: #c3cfda; }
 
+    /* ---------- mapa ---------- */
+    .map-svg { width: 100%; height: auto; display: block; background: #0f1923; border-radius: 12px; }
+    .map-svg .river { fill: none; stroke: #1d4a73; stroke-width: 14; stroke-linecap: round; opacity: 0.45; }
+    .map-svg .node-label { fill: #c3cfda; font-size: 9.5px; text-anchor: middle; pointer-events: none; }
+    .map-svg .node circle { transition: fill 0.5s; }
+    .map-svg .node.here circle:first-of-type { stroke: #fff; stroke-width: 1.5; }
+    .map-svg .badge-c { fill: var(--accent); }
+    .map-svg .badge-t { fill: #0b141e; font-size: 10px; font-weight: 800; text-anchor: middle; pointer-events: none; }
+    .map-svg .route { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 4 4; opacity: 0.75; }
+    .map-svg .route-t { fill: #9ad0ff; font-size: 9px; text-anchor: middle; paint-order: stroke; stroke: #0f1923; stroke-width: 3px; }
+    .map-svg .home-t { font-size: 14px; text-anchor: middle; }
+    .map-svg .me-dot { fill: #fff; stroke: var(--accent); stroke-width: 2; }
+    .map-svg .ping { fill: none; stroke: var(--accent); stroke-width: 2; animation: ring 1.6s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes ring { from { transform: scale(0.8); opacity: 0.9; } to { transform: scale(3); opacity: 0; } }
+    .map-legend { margin-top: 8px; font-size: 0.72rem; }
+
+    /* ---------- potvrzovací okno ---------- */
+    #confirmModal {
+      position: fixed; inset: 0; z-index: 10100; display: none; align-items: center; justify-content: center;
+      background: rgba(4, 9, 14, 0.7); backdrop-filter: blur(3px); padding: 20px;
+    }
+    #confirmModal .splash { padding: 22px; text-align: center; }
+    #confirmModal p { margin: 0 0 18px; line-height: 1.5; }
+
     /* ---------- úvod a konec ---------- */
     #introScreen, #endScreen {
       position: fixed; inset: 0; z-index: 9999;
@@ -301,6 +340,7 @@
           </div>
         </div>
         <div id="gameLog" class="chat-body"></div>
+        <button id="scrollDown" class="scroll-down" style="display:none" onclick="scrollChat()">↓ <span id="unreadCount"></span></button>
         <div class="composer">
           <div class="composer-fake">Napiš zprávu…</div>
           <button id="nextDayBtn" class="send-btn" onclick="nextDay()">🌙 Další den</button>
@@ -328,6 +368,11 @@
       </div>
 
       <div class="card">
+        <h3>🗺️ Mapa <span id="mapWhere" class="muted"></span></h3>
+        <div id="mapBox"></div>
+      </div>
+
+      <div class="card">
         <h3>📍 Čtvrti</h3>
         <div id="districtTableContainer"></div>
       </div>
@@ -351,6 +396,17 @@
   <audio id="siren" src="sounds/siren-passing-275127.mp3" preload="auto"></audio>
   <audio id="bgMusic" src="sounds/lo-fi-house-200847.mp3" preload="auto" loop></audio>
 
+  <!-- Potvrzení konce dne bez nákupu -->
+  <div id="confirmModal">
+    <div class="splash">
+      <p id="confirmText"></p>
+      <div class="intro-buttons">
+        <button id="confirmYes" class="btn primary"></button>
+        <button id="confirmNo" class="btn"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- Úvodní obrazovka -->
   <div id="introScreen">
     <div class="splash">
@@ -371,15 +427,16 @@
         <ul>
           <li>🎯 <b>Cíl:</b> našetři 1 000 000 Kč a zmiz z Prahy</li>
           <li>🌙 Objednávky přijdou po kliknutí na „Další den". Den má jen pár hodin – každé doručení ti nějakou ubere</li>
+          <li>🗺️ <b>Mapa:</b> doba cesty závisí na tom, kde zrovna jsi. Po doručení v Dejvicích mají další poptávky z Dejvic jen 10 minut, jiné čtvrti jsou daleko. Ráno vyrážíš z bytu. Pozor: opakovaná doručení v jedné čtvrti zvedají heat</li>
           <li>💬 Zákazníci ti píšou v chatu. Přijmi nebo odmítni. Ti, které obsloužíš, se stanou stálými a platí víc</li>
           <li>💎 Cenu nabídky ti nikdo nehodnotí. Zjisti sám, co je hodně nad cenou – někdy je to past</li>
           <li>🚗 Lepší auto zkracuje doručení a zvyšuje popularitu, ale je nápadnější pro policii a platíš provoz každý den. Bez peněz na provoz jedeš tramvají</li>
           <li>🌟 Popularita zvyšuje počet objednávek ve čtvrti, ale přitahuje i policii</li>
           <li>🚨 Policie sleduje každou čtvrť zvlášť. Každé doručení zvedá heat (víc gramů, známější čtvrť, opakování v jedné čtvrti a nápadné auto = víc), klesá jen pomalu a jen tam, kam nedoručuješ. Rozprostři doručení po městě! Při vysokém heatu přijde zátah (ztráta zásob a pokuta). Druhý zátah = vězení. Právník tě jednou zachrání</li>
           <li>🧼 Zmatení policie: SIM, mobil nebo úplatek jednou denně, holič jednou týdně</li>
-          <li>📦 Dodavatelé jsou jen v pondělí a nabídky platí jen ten den – nakup zásoby na celý týden! Mají různé ceny i spolehlivost. Kapacita stashe je omezená, vylepši zázemí</li>
+          <li>📦 Dodavatelé jsou jen v pondělí a nabídky platí jen ten den – nakup zásoby na celý týden! Mají různé ceny i spolehlivost. Když je přeskočíš, hra se tě před koncem dne zeptá. Kapacita stashe je omezená, vylepši zázemí</li>
           <li>🎲 Náhodné eventy mají důsledky – někdy až za pár dní (lichvář, dluhy). Některé jsou na čas: když nestihneš odpovědět, rozhodne se za tebe</li>
-          <li>🏚️ Každých 30 dní platíš nájem. Roste s časem. Nezaplacený nájem se mění v dluh</li>
+          <li>🏚️ Každých 30 dní platíš nájem. Roste pomalu, jednou za 2 měsíce. Nezaplacený nájem se mění v dluh</li>
           <li>💾 Hra se ukládá na začátku každého dne</li>
         </ul>
       </div>

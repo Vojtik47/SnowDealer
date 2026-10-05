@@ -67,6 +67,15 @@ Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord
 - **Obchod** je v záložkách: Dodavatelé, Auta, Zázemí, Policie. V pondělí se automaticky otevřou dodavatelé a na záložce svítí zelená tečka.
 - Tmavý vzhled, animace, funguje i na mobilu.
 
+
+## 2d. Úpravy po testování ve dvou
+
+- **Nájem** roste jen jednou za 2 měsíce o 2 000 Kč: 12 000 Kč první dva měsíce, pak 14 000, 16 000 … (strop 40 000 Kč). Po roce hry je to 22 000 Kč.
+- **Nabídky ze všech čtvrtí.** Známost čtvrti zvyšuje šanci, ale ne o řád: hodně známá čtvrť má asi 2,5× větší šanci než neznámá (dřív 9×). Nenavštívené čtvrti dostávají bonus a čtvrť, která už dnes psala, je méně pravděpodobná.
+- **Chat se sám neposouvá.** Když přijde nová zpráva, chat zůstane, kde je, takže neklikneš na jinou nabídku. Dole se objeví šipka „↓" s počtem nových zpráv. Text se píše po písmenkách, ale tlačítka pod bublinou zůstávají na místě.
+- **Mapa.** Čtvrti mají polohu a doba cesty se počítá z toho, kde jsi. Ráno vyrážíš z bytu. Po doručení v Dejvicích mají další poptávky z Dejvic jen 10 minut a jiné čtvrti jsou daleko. Časy se přepočítají u všech otevřených nabídek. Mapa ukazuje tebe, čekající poptávky, popularitu (velikost) a policii (barva). Rychlost aut: tramvaj 3,4, Yamaha 4,6, Golf 6, BMW 330D 7,6, M4 9,5 km/h v herním čase.
+- **Dodavatelé nejde přeskočit omylem.** Když jsou dnes dodavatelé, něco z nabídky by šlo koupit a ještě jsi nic nekoupil, hra se před koncem dne zeptá, jestli opravdu chceš spát bez nákupu.
+- **Heat:** při zatčení se heat nesnižuje (dřív tabulka ukazovala 43 % místo 100 %) a u měřiče je procento.
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.

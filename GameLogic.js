@@ -9,17 +9,27 @@ const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
 const GOAL_MONEY = 1000000;   // výhra: tolik Kč v hotovosti
-const RENT_BASE = 12000;      // nájem v prvním měsíci
-const RENT_STEP = 3000;       // o kolik nájem roste každý další měsíc
-const RENT_MAX = 60000;
+const RENT_BASE = 12000;      // nájem v prvních dvou měsících
+const RENT_STEP = 2000;       // o kolik nájem vzroste, a to jen každé 2 měsíce
+const RENT_MAX = 40000;
 const MAX_RAIDS = 2;          // druhý zátah = vězení
 const NEGATIVE_PROB = 0.5;
 
 const weekDays = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"];
+// Poloha čtvrtí na mapě (zhruba v km, sever je nahoře). Doba cesty se počítá z aktuální polohy.
 const districts = {
-  "Žižkov": 1, "Vinohrady": 1, "Karlín": 1.5, "Holešovice": 1.5,
-  "Smíchov": 2, "Dejvice": 2, "Letná": 2.5, "Modřany": 3
+  "Dejvice": { x: -4.2, y: 3.6 },
+  "Letná": { x: -0.6, y: 3.0 },
+  "Holešovice": { x: 1.0, y: 4.0 },
+  "Karlín": { x: 3.2, y: 2.6 },
+  "Žižkov": { x: 3.4, y: 0.2 },
+  "Vinohrady": { x: 4.2, y: -1.6 },
+  "Smíchov": { x: -2.8, y: -1.2 },
+  "Modřany": { x: 0.2, y: -6.4 }
 };
+const HOME = { x: 1.2, y: 0.8 };       // tvůj byt, odkud ráno vyrážíš
+const STREET_FACTOR = 1.25;            // ulice nejsou vzdušnou čarou
+const HANDOVER_H = 0.17;               // předání ve stejné čtvrti = 10 minut
 const districtCustomers = {
   "Žižkov": ["@zizman", "@needhelpdycky", "@VojtikPupik", "@parkovej", "@cmoud",
     "@televizni_vez_fan", "@pivni_pavel", "@bobo_z_parku", "@kebab_kral", "@zizkov_ekzem", "@hospoda_hugo"],
@@ -43,16 +53,16 @@ const districtNames = Object.keys(districts);
 // Základní ceny pro zákaznické objednávky (1–5 g)
 const customerBasePrices = { 1: 3000, 2: 5000, 3: 6500, 4: 8000, 5: 9500 };
 
-// time   = kolik hodin auto přidává (+) nebo ubírá (–) k době doručení
+// speed  = rychlost přesunu po městě (km za herní hodinu)
 // pop    = jednorázový bonus popularity při koupi
 // heat   = násobek pozornosti policie při doručení (nápadné auto = víc heatu)
 // upkeep = denní provoz (palivo, servis). Bez peněz auto stojí a jedeš MHD
 const CARS = [
-  { name: "🚋 Tramvaj", price: 0, time: 1, pop: 0, heat: 0.8, upkeep: 0, note: "nenápadná, ale pomalá" },
-  { name: "🛵 Yamaha Aerox", price: 12000, time: 0.25, pop: 0.2, heat: 0.9, upkeep: 100, note: "levný skútr, skoro nenápadný" },
-  { name: "🚗 Golf 2001 1.9TDI", price: 30000, time: -0.5, pop: 0.4, heat: 1, upkeep: 250, note: "pracovní kůň" },
-  { name: "🚙 BMW 330D", price: 65000, time: -1, pop: 0.8, heat: 1.15, upkeep: 500, note: "rychlé, ale už se na něj kouká" },
-  { name: "🏎️ BMW M4", price: 300000, time: -1.5, pop: 1.5, heat: 1.4, upkeep: 1200, note: "nejrychlejší a nejviditelnější" }
+  { name: "🚋 Tramvaj", price: 0, speed: 3.4, pop: 0, heat: 0.8, upkeep: 0, note: "nenápadná, ale pomalá" },
+  { name: "🛵 Yamaha Aerox", price: 12000, speed: 4.6, pop: 0.2, heat: 0.9, upkeep: 100, note: "levný skútr, skoro nenápadný" },
+  { name: "🚗 Golf 2001 1.9TDI", price: 30000, speed: 6, pop: 0.4, heat: 1, upkeep: 250, note: "pracovní kůň" },
+  { name: "🚙 BMW 330D", price: 65000, speed: 7.6, pop: 0.8, heat: 1.15, upkeep: 500, note: "rychlé, ale už se na něj kouká" },
+  { name: "🏎️ BMW M4", price: 300000, speed: 9.5, pop: 1.5, heat: 1.4, upkeep: 1200, note: "nejrychlejší a nejviditelnější" }
 ];
 const carByName = name => CARS.find(c => c.name === name) || CARS[0];
 
@@ -175,6 +185,7 @@ function newState() {
     strikes: 0, lastStrikeDay: 0, debt: 0,
     lastHaircutDay: null, secUsed: false, carDown: false,
     lastEventDay: 0, lastQuickDay: 0, recentEvents: [],
+    loc: "home", offered: {}, boughtToday: false,
     market: 1, supplierOffers: [], pending: [], seq: 0,
     pop: {}, police: {}, warned: {}, idle: {}, freq: {},
     accepted: {}, loyalty: {}, usedToday: [], salesToday: false,
@@ -191,7 +202,24 @@ const cap = () => CAPACITY[S.capLevel].cap;
 // auto, které právě opravdu jede (bez peněz na provoz stojí a jedeš MHD)
 const effCar = () => (S.carDown ? CARS[0] : carByName(S.car));
 const runnerUpkeep = () => RUNNERS.slice(0, S.runners).reduce((a, r) => a + r.upkeep, 0);
-const rentFor = day => Math.min(RENT_MAX, RENT_BASE + (Math.floor(day / 30) - 1) * RENT_STEP);
+// nájem roste jen každé 2 měsíce: měsíc 1–2 = základ, 3–4 = +2 000 Kč, …
+const rentFor = day => Math.min(RENT_MAX, RENT_BASE + Math.floor((Math.floor(day / 30) - 1) / 2) * RENT_STEP);
+
+// doba cesty z místa `from` ("home" nebo čtvrť) do čtvrti `to`; ve stejné čtvrti jen předání (10 min)
+function travelTime(from, to) {
+  if (from === to) return HANDOVER_H;
+  const a = from === "home" ? HOME : districts[from];
+  const b = districts[to];
+  const km = Math.hypot(a.x - b.x, a.y - b.y) * STREET_FACTOR;
+  return round2(HANDOVER_H + km / effCar().speed);
+}
+
+// jak dlouho trvá doba cesty v čitelné podobě: "10 min", "1 h 20 min"
+function fmtDur(h) {
+  const m = Math.max(1, Math.round(h * 60));
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h${m % 60 ? " " + (m % 60) + " min" : ""}`;
+}
 const dayName = day => weekDays[(day - 1) % 7];
 
 function saveGame() {
@@ -240,21 +268,46 @@ function stopSound(id) {
 }
 
 // --- chat ve stylu Telegramu: bubliny zákazníků, tvoje odpovědi, systémové hlášky ---
+// Text se „píše“ po písmenkách, ale celý je od začátku v bublině (průhledný), takže se rozložení
+// nemění a tlačítka pod bublinou nikam neujíždějí.
 function typeInto(el, text, speed = 15) {
+  el.textContent = "";
+  const typed = document.createElement("span");
+  const ghost = document.createElement("span");
+  ghost.className = "ghost";
+  ghost.textContent = text;
+  el.append(typed, ghost);
   let i = 0;
   (function step() {
-    if (!el.isConnected) return;
-    if (i < text.length) {
-      el.textContent += text.charAt(i++);
-      if (i % 4 === 0) scrollChat();
-      setTimeout(step, speed);
-    } else scrollChat();
+    if (!el.isConnected || i >= text.length) return;
+    i++;
+    typed.textContent = text.slice(0, i);
+    ghost.textContent = text.slice(i);
+    setTimeout(step, speed);
   })();
 }
 
+// Chat se NIKDY sám neposouvá, když přijde nová zpráva (jinak bys kliknul na jinou nabídku, než chceš).
+// Když je dole něco nového, objeví se šipka „↓“ s počtem nových zpráv.
+let unreadCount = 0;
+const chatGap = () => {
+  const l = $("gameLog");
+  return l.scrollHeight - l.scrollTop - l.clientHeight;
+};
+
+function updateScrollBtn() {
+  const btn = $("scrollDown");
+  if (!btn) return;
+  const away = chatGap() > 50;
+  if (!away) unreadCount = 0;
+  btn.style.display = away ? "" : "none";
+  $("unreadCount").textContent = unreadCount ? String(unreadCount) : "";
+}
+
+// tlačítko „↓“ a nový den (log se vyprázdní)
 function scrollChat() {
-  const log = $("gameLog");
-  log.scrollTop = log.scrollHeight;
+  const l = $("gameLog");
+  l.scrollTo({ top: l.scrollHeight, behavior: "smooth" });
 }
 
 // Pokud je nastavená kotva (zpráva, na kterou právě odpovídáš), nové zprávy se řadí hned pod ni,
@@ -272,14 +325,13 @@ function chatAppend(el) {
   if (chatAnchor && chatAnchor.parentNode === log) {
     chatAnchor.after(el);
     chatAnchor = el;
-    el.scrollIntoView({ block: "nearest" });
   } else {
     log.appendChild(el);
-    scrollChat();
   }
+  if (el.classList.contains("msg") && el.classList.contains("in") && chatGap() > 50) unreadCount++;
+  updateScrollBtn();
   return el;
 }
-
 const clockNow = () => {
   const d = new Date();
   return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
@@ -556,15 +608,22 @@ function clearOfferTimers() {
   clearEventTimer();
 }
 
+// Známější čtvrť píše častěji, ale ne o řád víc než ostatní. Dlouho nenavštívené čtvrti
+// dostanou bonus a čtvrť, která už dnes psala, je méně pravděpodobná (ať nepíšou pořád ze stejných míst).
 function pickDistrict() {
-  const weights = districtNames.map(d =>
-    Math.max(1, S.pop[d] >= 1 ? Math.ceil(S.pop[d] * 15) : Math.ceil(S.pop[d] * 10)));
+  const weights = districtNames.map(d => {
+    let w = 10 + S.pop[d] * 6;
+    if (S.idle[d] >= 4) w += 8;
+    return w * Math.pow(0.55, S.offered[d] || 0);
+  });
   let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  let pick = districtNames[0];
   for (let i = 0; i < districtNames.length; i++) {
     r -= weights[i];
-    if (r < 0) return districtNames[i];
+    if (r < 0) { pick = districtNames[i]; break; }
   }
-  return districtNames[0];
+  S.offered[pick] = (S.offered[pick] || 0) + 1;
+  return pick;
 }
 
 function pickCustomer(d) {
@@ -628,13 +687,13 @@ function generateOffer() {
   if (loyal) price *= 1 + 0.04 * loyaltyOf(nickname);
   price = Math.round(price / 100) * 100;
 
-  const time = Math.max(0.33, round2(districts[district] + effCar().time));
+  // doba cesty závisí na tom, kde zrovna jsi; po každém doručení se přepočítá u všech otevřených nabídek
+  const time = travelTime(S.loc, district);
 
-  if (S.timeLeft < time || S.supply < grams) {
+  if (S.supply < grams) {
     // nesplněná objednávka = ušlý výdělek, dál ji netrestáme špatnou reputací
     // (jinak by zásoby dodávané jen v pondělí rozbily popularitu)
-    const why = S.supply < grams ? "nemáš stash" : "nemáš čas";
-    logMessage(`⚠️ ${nickname} z ${district} – chtěl ${grams}g, ale ${why}. Ušlý zisk ${fmt(price)} Kč.`);
+    logMessage(`⚠️ ${nickname} z ${district} – chtěl ${grams}g, ale nemáš stash. Ušlý zisk ${fmt(price)} Kč.`);
     updateStatus();
     return;
   }
@@ -717,12 +776,13 @@ function generateOffer() {
   card.classList.add("offer");
   card.dataset.nickname = nickname;
   card.dataset.district = district;
+  card._offer = offer;
   chatAppend(card);   // musí být v DOM dřív, než začne psaní
   typeInto(b.text, loyal && Math.random() < 0.5 ? rand(loyalMessages) : rand(messages));
 
   const order = document.createElement("div");
   order.className = "order";
-  order.innerHTML = `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b>${fmtH(time)} h</b>`
+  order.innerHTML = `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b class="t">${fmtDur(time)}</b>`
     + badges.map(x => ` <span class="badge">${x}</span>`).join("");
   b.bubble.insertBefore(order, b.time);
 
@@ -738,7 +798,21 @@ function generateOffer() {
   no.onclick = () => declineOffer(card, offer);
   kb.append(yes, no);
   b.col.appendChild(kb);
-  scrollChat();
+  updateScrollBtn();
+  renderMap();
+}
+
+// po přesunu na nové místo se přepočítá doba cesty u všech otevřených nabídek
+function refreshOfferTimes() {
+  document.querySelectorAll("#gameLog .offer").forEach(card => {
+    if (card.dataset.done || !card._offer) return;
+    card._offer.time = travelTime(S.loc, card._offer.district);
+    const t = card.querySelector(".order .t");
+    if (t) {
+      t.textContent = fmtDur(card._offer.time);
+      t.classList.toggle("far", card._offer.time > S.timeLeft);   // nestíhal bys to
+    }
+  });
 }
 
 // vyřízená nabídka: zmizí klávesnice, bublina zůstane v chatu a můžeš zákazníkovi odpovědět
@@ -765,14 +839,21 @@ const declineOffer = (card, o) => withAnchor(card, () => declineOfferInner(card,
 
 function acceptOfferInner(card, o) {
   if (S.over || card.dataset.done) return;
+  // čas se počítá z aktuální polohy v okamžiku kliknutí
+  o.time = travelTime(S.loc, o.district);
+  if (S.timeLeft < o.time) {
+    // nabídka zůstane otevřená: nestíháš ji teď, ale po přesunu jinam třeba ano
+    logMessage(`⏱️ Do ${o.district} bys potřeboval ${fmtDur(o.time)}, ale zbývá ti ${fmtDur(S.timeLeft)}.`);
+    return;
+  }
   card.dataset.done = "1";
-
-  if (S.timeLeft < o.time) return failOffer(card, o, `❌ Nemáš dost času na doručení do ${o.district}. Nabídka propadla.`);
   if (S.supply < o.grams) return failOffer(card, o, `❌ Nemáš dost stashe na doručení ${o.grams}g do ${o.district}. Nabídka propadla.`);
 
   closeOffer(card, rand(ACCEPT_REPLIES));
   S.timeLeft = round2(S.timeLeft - o.time);
   S.supply -= o.grams;
+  S.loc = o.district;   // jsi tam, takže ostatní poptávky z téhle čtvrti jsou hned po ruce
+  refreshOfferTimes();
 
   if (o.trap) {
     logMessage(`🚓 Past! ${o.nickname} byl převlečený policista. Zboží (${o.grams}g) je pryč a ${o.district} tě má v hledáčku.`);
@@ -1403,6 +1484,7 @@ function buyStock(price, grams, supplierName, offerId) {
     logMessage(`✅ ${supplierName}: koupil jsi ${got}g za ${fmt(price)} Kč.`);
   }
   S.supply += got;
+  S.boughtToday = true;
   if (offerId) S.supplierOffers = S.supplierOffers.filter(o => o.id !== offerId);
   updateStatus();
   return true;
@@ -1473,7 +1555,7 @@ function renderCars() {
     box.appendChild(d);
   }
   better.forEach(car => {
-    const saves = cur.time - car.time;
+    const faster = Math.round((car.speed / cur.speed - 1) * 100);
     const row = document.createElement("div");
     row.className = "row";
     const btn = document.createElement("button");
@@ -1493,7 +1575,7 @@ function renderCars() {
     row.appendChild(btn);
     const stats = document.createElement("span");
     stats.className = "row-label";
-    stats.textContent = `⏱️ −${fmtH(saves)} h na doručení · 🌟 +${car.pop} · 🚨 heat ×${car.heat} · 🔧 ${fmt(car.upkeep)} Kč/den – ${car.note}`;
+    stats.textContent = `⏱️ cesty o ${faster} % rychlejší · 🌟 +${car.pop} · 🚨 heat ×${car.heat} · 🔧 ${fmt(car.upkeep)} Kč/den – ${car.note}`;
     row.appendChild(stats);
     box.appendChild(row);
   });
@@ -1635,6 +1717,63 @@ function renderDistrictTable() {
     ${rows}`;
 }
 
+/* ---------- mapa ---------- */
+const MAP_BOUNDS = { x0: -5.4, x1: 5.2, y0: -7.4, y1: 5.0 };
+function mapPoint(p) {
+  return {
+    x: 30 + (p.x - MAP_BOUNDS.x0) / (MAP_BOUNDS.x1 - MAP_BOUNDS.x0) * 260,
+    y: 22 + (MAP_BOUNDS.y1 - p.y) / (MAP_BOUNDS.y1 - MAP_BOUNDS.y0) * 256
+  };
+}
+const heatColor = h => (h >= 3 ? "#e5484d" : h >= 2 ? "#f5a524" : h >= 1 ? "#c9b83a" : "#3fae6a");
+
+// Mapa Prahy: kde právě jsi, odkud píšou zákazníci a kolik by cesta trvala.
+// Vzdálenost od tebe určuje čas doručení – ve stejné čtvrti je to jen 10 minut.
+function renderMap() {
+  const box = $("mapBox");
+  if (!box || !S) return;
+  const open = {};
+  document.querySelectorAll("#gameLog .offer").forEach(card => {
+    if (card.dataset.done || !card._offer) return;
+    open[card.dataset.district] = (open[card.dataset.district] || 0) + 1;
+  });
+  const me = S.loc === "home" ? HOME : districts[S.loc];
+  const mp = mapPoint(me);
+  $("mapWhere").textContent = S.loc === "home" ? "· jsi doma" : `· jsi v ${S.loc}`;
+
+  // řeka jako dekorace
+  const rv = [{ x: 0.9, y: 5 }, { x: 0.8, y: 2.8 }, { x: -0.2, y: 0.2 }, { x: -0.6, y: -2.5 }, { x: 0.3, y: -5.5 }, { x: 0.8, y: -7.4 }].map(mapPoint);
+  const river = `M${rv[0].x},${rv[0].y} C${rv[1].x},${rv[1].y} ${rv[2].x},${rv[2].y} ${rv[3].x},${rv[3].y} S${rv[4].x},${rv[4].y} ${rv[5].x},${rv[5].y}`;
+
+  let lines = "", nodes = "";
+  districtNames.forEach(d => {
+    const p = mapPoint(districts[d]);
+    const h = S.police[d] || 0;
+    const r = 7 + S.pop[d] * 2.2;
+    if (open[d] && S.loc !== d) {
+      const mx = (mp.x + p.x) / 2, my = (mp.y + p.y) / 2;
+      lines += `<line x1="${mp.x}" y1="${mp.y}" x2="${p.x}" y2="${p.y}" class="route"/>`
+        + `<text x="${mx}" y="${my - 3}" class="route-t">${fmtDur(travelTime(S.loc, d))}</text>`;
+    }
+    nodes += `<g class="node${S.loc === d ? " here" : ""}">
+      <title>${d}: popularita ${S.pop[d].toFixed(1)}/5, policie ${Math.round(h / 3.5 * 100)} %</title>
+      <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${heatColor(h)}" fill-opacity="0.85"/>
+      <text x="${p.x}" y="${p.y + r + 11}" class="node-label">${d}</text>
+      ${open[d] ? `<circle cx="${p.x + r}" cy="${p.y - r}" r="8" class="badge-c"/><text x="${p.x + r}" y="${p.y - r + 3.5}" class="badge-t">${open[d]}</text>` : ""}
+    </g>`;
+  });
+  const hp = mapPoint(HOME);
+  box.innerHTML = `<svg viewBox="0 0 320 300" class="map-svg" role="img" aria-label="Mapa čtvrtí">
+    <path d="${river}" class="river"/>
+    ${lines}
+    ${nodes}
+    <text x="${hp.x}" y="${hp.y + 4}" class="home-t">🏠</text>
+    <circle cx="${mp.x}" cy="${mp.y}" r="9" class="ping"/>
+    <circle cx="${mp.x}" cy="${mp.y}" r="5" class="me-dot"/>
+  </svg>
+  <div class="map-legend muted">Barva = policie · velikost = popularita · číslo = čekající poptávky · ● ty</div>`;
+}
+
 function daysToRent() { return (30 - (S.day % 30)) % 30; }
 
 function updateStatus() {
@@ -1649,7 +1788,7 @@ function updateStatus() {
     <div class="pill"><span class="pi">📅</span><b>${dayName(S.day)}</b><small>den ${S.day}</small></div>
     <div class="pill money"><span class="pi">💰</span><b>${fmt(S.money)} Kč</b></div>
     <div class="pill${stashWarn}"><span class="pi">❄️</span><b>${S.supply}/${cap()} g</b></div>
-    <div class="pill${S.timeLeft <= 0 ? " warn" : ""}"><span class="pi">⏱️</span><b>${fmtH(S.timeLeft)} h</b></div>`;
+    <div class="pill${S.timeLeft <= 0 ? " warn" : ""}"><span class="pi">⏱️</span><b>${fmtDur(S.timeLeft)}</b></div>`;
 
   const pct = Math.min(100, S.money / GOAL_MONEY * 100);
   const chips = [
@@ -1666,7 +1805,7 @@ function updateStatus() {
   const runner = S.runners ? ` · 🏃 kurýři: ${S.runners}` : "";
   const upkeep = car.upkeep ? ` · 🔧 ${fmt(car.upkeep)} Kč/den` : "";
   const down = S.carDown ? " · ⚠️ auto stojí (nezaplacený provoz), jedeš tramvají" : "";
-  $("carInfo").textContent = `🚗 ${S.car} · doručení ${car.time >= 0 ? "+" : ""}${fmtH(car.time)} h · policie ×${car.heat}${upkeep}${runner}${down}`;
+  $("carInfo").textContent = `🚗 ${S.car} · rychlost ${fmtH(car.speed)} km/h · policie ×${car.heat}${upkeep}${runner}${down}`;
 
   // odběratelé kanálu rostou s tvou slávou
   const subs = Math.round(1200 + S.stats.delivered * 41 + districtNames.reduce((a, d) => a + S.pop[d], 0) * 220);
@@ -1677,6 +1816,8 @@ function updateStatus() {
   renderCars();
   renderUpgrades();
   renderSuppliers();
+  refreshOfferTimes();
+  renderMap();
 
   if (!S.over && !S.won && !S.endless && S.money >= GOAL_MONEY) victory();
 }
@@ -1754,6 +1895,40 @@ function nextDay() {
     logMessage("⏳ Dnes se ještě něco stane – chvilku počkej.");
     return;
   }
+  // dodavatelé jsou jen dnes: nenech hráče omylem přijít o nákup na celý týden
+  if (supplierWarningNeeded()) {
+    askConfirm(
+      `📦 Dnes jsou dodavatelé a ještě jsi nic nenakoupil. Máš ${S.supply}/${cap()} g a další dodavatelé přijedou až za týden. Opravdu chceš jít spát bez nákupu?`,
+      "📦 Jít nakupovat", "🌙 Spát bez nákupu",
+      () => showTab("supplierPanel"),
+      advanceDay
+    );
+    return;
+  }
+  advanceDay();
+}
+
+// dodavatelé jsou dnes, něco z nabídky by šlo koupit (peníze + místo), ale zatím jsi nekoupil nic
+function supplierWarningNeeded() {
+  return S.supplierOffers.length > 0 && !S.boughtToday
+    && S.supplierOffers.some(o => (o.debt || o.price <= S.money) && S.supply + o.grams <= cap());
+}
+
+// jednoduché potvrzovací okno (stejný styl jako zbytek hry)
+function askConfirm(text, yesLabel, noLabel, onYes, onNo) {
+  const modal = $("confirmModal");
+  $("confirmText").textContent = text;
+  const yes = $("confirmYes"), no = $("confirmNo");
+  yes.textContent = yesLabel;
+  no.textContent = noLabel;
+  const close = () => { modal.style.display = "none"; };
+  yes.onclick = () => { close(); onYes(); };
+  no.onclick = () => { close(); onNo(); };
+  modal.style.display = "flex";
+}
+
+function advanceDay() {
+  if (S.over) return;
   $("nextDayBtn").classList.remove("pulse");
   clearOfferTimers();
 
@@ -1799,10 +1974,15 @@ function nextDay() {
   S.usedToday = [];
   S.salesToday = false;
   S.secUsed = false;
+  S.boughtToday = false;
+  S.loc = "home";   // ráno vyrážíš z bytu
+  S.offered = {};
   districtNames.forEach(d => { S.freq[d] = 0; });
   S.timeLeft = 4 + S.runners;
 
   $("gameLog").innerHTML = "";
+  unreadCount = 0;
+  updateScrollBtn();
   logMessage(`📆 ${dayName(S.day)} – Začíná den ${S.day}`);
   logMessage(summary);
   if (lost.length) logMessage(`🥶 Konkurence ti zabírá trh: ${lost.join(", ")}.`);
@@ -1871,6 +2051,8 @@ function nextDay() {
    ===================================================================== */
 function resetUi() {
   clearOfferTimers();
+  unreadCount = 0;
+  $("confirmModal").style.display = "none";
   stopSound("siren");
   document.body.classList.remove("police-flash");
   $("endScreen").style.display = "none";
@@ -1939,6 +2121,7 @@ function init() {
   updateStatus();
   logMessage(`💬 Vítej v Sněhovém Dealerovi – verze ${VERSION}`);
 
+  $("gameLog").addEventListener("scroll", updateScrollBtn);
   if (loadGame()) $("continueBtn").style.display = "";
 
   $("toggleMusic").addEventListener("click", () => {
@@ -1966,6 +2149,7 @@ window.continueGame = continueGame;
 window.continueAfterWin = continueAfterWin;
 window.toggleHowToPlay = toggleHowToPlay;
 window.showTab = showTab;
+window.scrollChat = scrollChat;
 window.nextDay = nextDay;
 
 init();
