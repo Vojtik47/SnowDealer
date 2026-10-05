@@ -149,6 +149,13 @@
     .bubble-text { white-space: pre-wrap; }
     .bubble-time { font-size: 0.68rem; color: var(--muted); text-align: right; margin-top: 2px; }
     .msg.out .bubble-time { color: #9cc1e6; }
+    .quote {
+      border-left: 3px solid #8cc4f5; background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px 8px 8px 4px; padding: 3px 9px; margin-bottom: 5px; font-size: 0.78rem;
+      display: flex; flex-direction: column; max-width: 340px;
+    }
+    .quote b { color: #9ad0ff; font-size: 0.78rem; }
+    .quote span { color: #d3dfeb; opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .order {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
       margin-top: 6px; padding: 6px 8px; background: #0f1923; border-radius: 10px; font-size: 0.85rem;

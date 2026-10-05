@@ -257,9 +257,26 @@ function scrollChat() {
   log.scrollTop = log.scrollHeight;
 }
 
+// Pokud je nastavená kotva (zpráva, na kterou právě odpovídáš), nové zprávy se řadí hned pod ni,
+// takže tvoje odpověď a výsledek stojí přímo pod danou poptávkou.
+let chatAnchor = null;
+
+function withAnchor(el, fn) {
+  const prev = chatAnchor;
+  chatAnchor = el;
+  try { return fn(); } finally { chatAnchor = prev; }
+}
+
 function chatAppend(el) {
-  $("gameLog").appendChild(el);
-  scrollChat();
+  const log = $("gameLog");
+  if (chatAnchor && chatAnchor.parentNode === log) {
+    chatAnchor.after(el);
+    chatAnchor = el;
+    el.scrollIntoView({ block: "nearest" });
+  } else {
+    log.appendChild(el);
+    scrollChat();
+  }
   return el;
 }
 
@@ -320,14 +337,24 @@ function customerBubble(nick, district, text) {
   return b;
 }
 
-// tvoje odpověď (modrá bublina vpravo)
-function playerBubble(text) {
+// tvoje odpověď (modrá bublina vpravo); quote = {nick, text} je citace zprávy, na kterou odpovídáš
+function playerBubble(text, quote) {
   const row = document.createElement("div");
   row.className = "msg out";
   const col = document.createElement("div");
   col.className = "msg-col";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+  if (quote) {
+    const q = document.createElement("div");
+    q.className = "quote";
+    const qn = document.createElement("b");
+    qn.textContent = quote.nick;
+    const qt = document.createElement("span");
+    qt.textContent = quote.text.length > 70 ? quote.text.slice(0, 70) + "…" : quote.text;
+    q.append(qn, qt);
+    bubble.appendChild(q);
+  }
   const t = document.createElement("div");
   t.className = "bubble-text";
   t.textContent = text;
@@ -414,9 +441,13 @@ function triggerRaid(d) {
   S.supply -= lost;
   S.money -= fine;
   S.timeLeft = Math.max(0, S.timeLeft - 1);
-  S.police[d] = 1.5;
-  S.warned[d] = 0;
-  districtNames.forEach(x => { if (x !== d) S.police[x] = Math.max(0, S.police[x] - 0.3); });
+  // při zatčení heat nesnižujeme, ať tabulka ukazuje skutečnou hodnotu, která zátah spustila (100 %)
+  const arrest = !S.lawyer && S.strikes + 1 >= MAX_RAIDS;
+  if (!arrest) {
+    S.police[d] = 1.5;
+    S.warned[d] = 0;
+    districtNames.forEach(x => { if (x !== d) S.police[x] = Math.max(0, S.police[x] - 0.3); });
+  }
 
   if (S.lawyer) {
     S.lawyer = false;
@@ -425,9 +456,9 @@ function triggerRaid(d) {
     S.strikes++;
     S.lastStrikeDay = S.day;
     if (S.strikes >= MAX_RAIDS) {
-      logImportantMessage(`🚔 Druhý zátah! Policie tě zatkla v ${d}.`);
+      logImportantMessage(`🚔 Druhý zátah! Policie tě zatkla v ${d} (policie tam byla na 100 %).`);
       updateStatus();
-      endGame("🚔 VĚZENÍ", `Policie tě zatkla v ${d}. Dva zátahy jsou na tebe moc.`);
+      endGame("🚔 VĚZENÍ", `Policie tě zatkla v ${d}, kde ti na teploměru policie vyskočilo na 100 %. Dva zátahy jsou na tebe moc.`);
       return;
     }
     logImportantMessage(`🚨 Zátah v ${d}! Přišel jsi o ${lost} g a ${fmt(fine)} Kč. Další zátah = vězení. (${S.strikes}/${MAX_RAIDS})`);
@@ -715,7 +746,10 @@ function closeOffer(card, reply) {
   const kb = card.querySelector(".kb");
   if (kb) kb.remove();
   card.classList.add("closed");
-  if (reply) playerBubble(reply);
+  if (reply) {
+    const text = card.querySelector(".bubble-text");
+    playerBubble(reply, { nick: card.dataset.nickname, text: text ? text.textContent : "" });
+  }
 }
 
 function failOffer(card, o, msg) {
@@ -725,7 +759,11 @@ function failOffer(card, o, msg) {
   updateStatus();
 }
 
-function acceptOffer(card, o) {
+// odpověď i výsledek se zobrazí přímo pod danou poptávkou
+const acceptOffer = (card, o) => withAnchor(card, () => acceptOfferInner(card, o));
+const declineOffer = (card, o) => withAnchor(card, () => declineOfferInner(card, o));
+
+function acceptOfferInner(card, o) {
   if (S.over || card.dataset.done) return;
   card.dataset.done = "1";
 
@@ -778,7 +816,7 @@ function deliveryHeat(d, grams) {
   return round2(gain);
 }
 
-function declineOffer(card, o) {
+function declineOfferInner(card, o) {
   if (S.over || card.dataset.done) return;
   card.dataset.done = "1";
   closeOffer(card, rand(DECLINE_REPLIES));
@@ -1240,8 +1278,11 @@ function showEvent() {
     if (clock) clock.remove();
     if (bar) bar.remove();
     box.classList.remove("one-take-event");   // vyřízeno, den už jde ukončit
-    playerBubble(choice.label);
-    choice.run();
+    // odpověď a výsledek stojí přímo pod událostí
+    withAnchor(box, () => {
+      playerBubble(choice.label, { nick: "🎲 Událost", text: e.text });
+      choice.run();
+    });
     updateStatus();
   };
   e.choices.forEach(c => {
@@ -1586,7 +1627,7 @@ function renderDistrictTable() {
     return `<div class="district">
       <div>${d}</div>
       <div class="meter" title="Popularita"><span style="width:${popPct}%;background:#2f7fc4"></span><em>${popIcon} ${popLabel}</em></div>
-      <div class="meter" title="Policie"><span style="width:${heatPct}%;background:${barColor}"></span><em>${policeIcon} ${level}</em></div>
+      <div class="meter" title="Policie"><span style="width:${heatPct}%;background:${barColor}"></span><em>${policeIcon} ${level} · ${Math.round(h / 3.5 * 100)} %</em></div>
     </div>`;
   }).join("");
   $("districtTableContainer").innerHTML = `
