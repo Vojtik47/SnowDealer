@@ -5,6 +5,7 @@
    KONSTANTY A DATA
    ===================================================================== */
 const VERSION = "5.0";
+const BUILD = "2026-10-06.1";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -2146,6 +2147,18 @@ function playBackgroundMusic() {
 }
 
 function init() {
+  // starý index.html s novým skriptem: chybí prvky, které hra potřebuje
+  const need = ["mapBox", "scrollDown", "confirmModal", "supplierPanel", "gameLog", "status", "errorBanner"];
+  const missing = need.filter(id => !$(id));
+  const meta = document.querySelector('meta[name="build"]');
+  if (missing.length || !meta || meta.content !== BUILD) {
+    const b = $("errorBanner");
+    if (b) {
+      b.style.display = "block";
+      b.innerHTML = "⚠️ <b>Soubory hry nejsou ze stejné verze.</b> Nahraj na GitHub oba soubory (<b>index.html</b> i <b>GameLogic.js</b>) a obnov stránku (Ctrl+F5)." + (missing.length ? "<br>Chybí: " + missing.join(", ") : "");
+    }
+    if (missing.length) return;
+  }
   $("versionTag").textContent = "v" + VERSION;
   S = newState();           // jen aby se dalo vykreslit UI za úvodní obrazovkou
   refreshSuppliers();

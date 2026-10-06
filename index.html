@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sněhový Dealer</title>
+  <meta name="build" content="2026-10-06.1" />
   <style>
     :root {
       --bg: #0b141e;
@@ -46,6 +47,14 @@
       to { opacity: 1; transform: none; }
     }
     .police-flash { animation: policeFlashing 0.3s infinite; }
+
+    /* ---------- chybové hlášení (nesoulad souborů, chyba ve hře) ---------- */
+    #errorBanner {
+      display: none; position: sticky; top: 0; z-index: 20000;
+      background: #7a1f1f; color: #fff; padding: 12px 18px; font-size: 0.95rem; line-height: 1.45;
+      border-bottom: 2px solid #ff6b6b;
+    }
+    #errorBanner b { color: #ffd2d2; }
 
     /* ---------- horní lišta ---------- */
     .topbar {
@@ -329,6 +338,7 @@
   </style>
 </head>
 <body>
+  <div id="errorBanner"></div>
   <header class="topbar">
     <div class="brand">❄️ Sněhový Dealer <small id="versionTag"></small></div>
     <div id="status" class="stats"></div>
@@ -457,6 +467,26 @@
     </div>
   </div>
 
-  <script src="GameLogic.js"></script>
+  <script>
+    // Když se index.html a GameLogic.js neshodují (např. na GitHubu je jeden starší), ukáže se výrazné hlášení.
+    (function () {
+      var EXPECTED = document.querySelector('meta[name="build"]').content;
+      function banner(msg) {
+        var b = document.getElementById('errorBanner');
+        if (!b) return;
+        b.style.display = 'block';
+        b.innerHTML = msg;
+      }
+      window.addEventListener('error', function (e) {
+        if (e.message) banner('⚠️ <b>Chyba ve hře:</b> ' + e.message + '<br>Nejčastější příčina: na GitHubu jsou <b>index.html</b> a <b>GameLogic.js</b> z různých verzí. Nahraj oba soubory znovu a obnov stránku (Ctrl+F5).');
+      });
+      window.addEventListener('load', function () {
+        if (typeof BUILD === 'undefined' || BUILD !== EXPECTED) {
+          banner('⚠️ <b>Soubory hry nejsou ze stejné verze</b> (index.html ' + EXPECTED + ', GameLogic.js ' + (typeof BUILD === 'undefined' ? 'starší' : BUILD) + '). Nahraj na GitHub oba soubory (<b>index.html</b> i <b>GameLogic.js</b>) a obnov stránku (Ctrl+F5).');
+        }
+      });
+    })();
+  </script>
+  <script src="GameLogic.js?b=2026-10-06.1"></script>
 </body>
 </html>
