@@ -18,16 +18,15 @@ const NEGATIVE_PROB = 0.5;
 const weekDays = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota", "Neděle"];
 // Poloha čtvrtí na mapě (zhruba v km, sever je nahoře). Doba cesty se počítá z aktuální polohy.
 const districts = {
-  "Dejvice": { x: -4.2, y: 3.6 },
-  "Letná": { x: -0.6, y: 3.0 },
-  "Holešovice": { x: 1.0, y: 4.0 },
-  "Karlín": { x: 3.2, y: 2.6 },
-  "Žižkov": { x: 3.4, y: 0.2 },
-  "Vinohrady": { x: 4.2, y: -1.6 },
-  "Smíchov": { x: -2.8, y: -1.2 },
-  "Modřany": { x: 0.2, y: -6.4 }
-};
-const HOME = { x: 1.2, y: 0.8 };       // tvůj byt, odkud ráno vyrážíš
+  "Dejvice": { x: -3.6, y: 3.3, side: "left" },       // severozápad
+  "Letná": { x: -0.9, y: 2.5, side: "left" },         // hned vedle Holešovic, za řekou
+  "Holešovice": { x: 0.8, y: 3.5, side: "right" },    // sever, ve smyčce Vltavy
+  "Karlín": { x: 2.0, y: 1.8, side: "right" },        // severovýchod od centra
+  "Žižkov": { x: 2.9, y: -0.1, side: "right" },        // východ
+  "Vinohrady": { x: 3.1, y: -1.8, side: "right" },    // jihovýchod
+  "Smíchov": { x: -1.7, y: -2.3, side: "left" },      // jihozápad, za řekou
+  "Modřany": { x: 0.9, y: -7.2, side: "right" }       // daleko na jihu
+};const HOME = { x: 0.3, y: 0.2 };       // tvůj byt blízko centra, odkud vyrážíš
 const STREET_FACTOR = 1.25;            // ulice nejsou vzdušnou čarou
 const HANDOVER_H = 0.17;               // předání ve stejné čtvrti = 10 minut
 const districtCustomers = {
@@ -213,6 +212,18 @@ function travelTime(from, to) {
   const km = Math.hypot(a.x - b.x, a.y - b.y) * STREET_FACTOR;
   return round2(HANDOVER_H + km / effCar().speed);
 }
+
+// Směna: pracuješ od 20:00 do 01:00 (5 h). Kurýr směnu prodlouží o hodinu.
+// S.timeLeft jsou zbývající hodiny směny, z toho se odvozují hodiny na displeji.
+const SHIFT_START_H = 20;
+const SHIFT_BASE_H = 5;
+const shiftLen = () => SHIFT_BASE_H + (S ? S.runners : 0);
+function clockOf(hoursFromStart) {
+  const total = Math.round((SHIFT_START_H + hoursFromStart) * 60) % (24 * 60);
+  return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+}
+const clockAt = (offsetH = 0) => clockOf(shiftLen() - S.timeLeft + offsetH);   // teď (+ offset)
+const shiftEndClock = () => clockOf(shiftLen());
 
 // jak dlouho trvá doba cesty v čitelné podobě: "10 min", "1 h 20 min"
 function fmtDur(h) {
@@ -782,7 +793,7 @@ function generateOffer() {
 
   const order = document.createElement("div");
   order.className = "order";
-  order.innerHTML = `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b class="t">${fmtDur(time)}</b>`
+  order.innerHTML = `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b class="t">${fmtDur(time)}</b> · 🕘 <b class="arr">${clockAt(time)}</b>`
     + badges.map(x => ` <span class="badge">${x}</span>`).join("");
   b.bubble.insertBefore(order, b.time);
 
@@ -808,10 +819,10 @@ function refreshOfferTimes() {
     if (card.dataset.done || !card._offer) return;
     card._offer.time = travelTime(S.loc, card._offer.district);
     const t = card.querySelector(".order .t");
-    if (t) {
-      t.textContent = fmtDur(card._offer.time);
-      t.classList.toggle("far", card._offer.time > S.timeLeft);   // nestíhal bys to
-    }
+    const arr = card.querySelector(".order .arr");
+    const late = card._offer.time > S.timeLeft;   // nestíhal bys to před koncem směny
+    if (t) { t.textContent = fmtDur(card._offer.time); t.classList.toggle("far", late); }
+    if (arr) { arr.textContent = clockAt(card._offer.time); arr.classList.toggle("far", late); }
   });
 }
 
@@ -843,7 +854,7 @@ function acceptOfferInner(card, o) {
   o.time = travelTime(S.loc, o.district);
   if (S.timeLeft < o.time) {
     // nabídka zůstane otevřená: nestíháš ji teď, ale po přesunu jinam třeba ano
-    logMessage(`⏱️ Do ${o.district} bys potřeboval ${fmtDur(o.time)}, ale zbývá ti ${fmtDur(S.timeLeft)}.`);
+    logMessage(`🕘 Do ${o.district} bys dorazil až v ${clockAt(o.time)}, ale směna končí v ${shiftEndClock()}.`);
     return;
   }
   card.dataset.done = "1";
@@ -1254,7 +1265,7 @@ const EVENT_FACTORIES = [
     text: "🚖 Taxikář: „Kam to bude, šéfe? Dovezu rychle.“",
     choices: [
       { label: "Taxi (−800 Kč, +1 h)", run: () => {
-        if (S.money >= 800) { S.money -= 800; S.timeLeft = round2(S.timeLeft + 1); logMessage("🚖 Svezli tě bez zdržení. Dnes máš o hodinu víc."); }
+        if (S.money >= 800) { S.money -= 800; S.timeLeft = Math.min(shiftLen(), round2(S.timeLeft + 1)); logMessage("🚖 Svezli tě bez zdržení, získal jsi hodinu zpátky."); }
         else logMessage("💸 Nemáš na taxi.");
       } },
       { label: "Ne", run: () => logMessage("🚶 Půjdeš pěšky.") }
@@ -1622,9 +1633,9 @@ function renderUpgrades() {
   }
   if (S.runners < RUNNERS.length) {
     const r = RUNNERS[S.runners];
-    add(`🏃 Kurýr #${S.runners + 1} (+1 h denně)`, r.price, `Provoz ${fmt(r.upkeep)} Kč denně. Když na něj nebudou peníze, odejde.`, () => {
+    add(`🏃 Kurýr #${S.runners + 1} (směna o hodinu delší)`, r.price, `Provoz ${fmt(r.upkeep)} Kč denně. Když na něj nebudou peníze, odejde.`, () => {
       S.runners++;
-      logMessage(`🏃 Najal jsi kurýra. Od zítřka +1 h denně (provoz ${fmt(runnerUpkeep())} Kč/den).`);
+      logMessage(`🏃 Najal jsi kurýra. Od zítřka máš směnu o hodinu delší (provoz ${fmt(runnerUpkeep())} Kč/den).`);
     });
   }
   if (S.lawyer && S.runners >= RUNNERS.length && S.capLevel >= CAPACITY.length - 1) {
@@ -1691,44 +1702,41 @@ function renderSecurity() {
 /* =====================================================================
    STATUS A TABULKA ČTVRTÍ
    ===================================================================== */
-function renderDistrictTable() {
-  const rows = districtNames.map(d => {
-    const pop = S.pop[d];
-    const h = S.police[d] || 0;
-    const level = policeLevels[Math.min(3, Math.floor(h))];
-    let popIcon = "🕳️", popLabel = "Neznámý";
-    if (pop >= 4) { popIcon = "🔥"; popLabel = "Hvězda"; }
-    else if (pop >= 2) { popIcon = "🌟"; popLabel = "Známý"; }
-    else if (pop >= 1) { popIcon = "📦"; popLabel = "Místní"; }
-    let policeIcon = "🕵️", barColor = "#3fae6a";
-    if (h >= 3) { policeIcon = "🚨"; barColor = "#e5484d"; }
-    else if (h >= 2) { policeIcon = "👀"; barColor = "#f5a524"; }
-    else if (h >= 1) { barColor = "#c9b83a"; }
-    const popPct = Math.max(4, pop / 5 * 100);
-    const heatPct = Math.max(4, h / 3.5 * 100);
-    return `<div class="district">
-      <div>${d}</div>
-      <div class="meter" title="Popularita"><span style="width:${popPct}%;background:#2f7fc4"></span><em>${popIcon} ${popLabel}</em></div>
-      <div class="meter" title="Policie"><span style="width:${heatPct}%;background:${barColor}"></span><em>${policeIcon} ${level} · ${Math.round(h / 3.5 * 100)} %</em></div>
-    </div>`;
-  }).join("");
-  $("districtTableContainer").innerHTML = `
-    <div class="district d-head"><div>Čtvrť</div><div>🌟 Popularita</div><div>🚨 Policie</div></div>
-    ${rows}`;
-}
-
-/* ---------- mapa ---------- */
-const MAP_BOUNDS = { x0: -5.4, x1: 5.2, y0: -7.4, y1: 5.0 };
+/* ---------- mapa se stavem čtvrtí ---------- */
+const MAP_W = 440, MAP_H = 430;
+const MAP_BOUNDS = { x0: -3.8, x1: 3.3, y0: -7.6, y1: 4.6 };
 function mapPoint(p) {
   return {
-    x: 30 + (p.x - MAP_BOUNDS.x0) / (MAP_BOUNDS.x1 - MAP_BOUNDS.x0) * 260,
-    y: 22 + (MAP_BOUNDS.y1 - p.y) / (MAP_BOUNDS.y1 - MAP_BOUNDS.y0) * 256
+    x: 125 + (p.x - MAP_BOUNDS.x0) / (MAP_BOUNDS.x1 - MAP_BOUNDS.x0) * 190,
+    y: 30 + (MAP_BOUNDS.y1 - p.y) / (MAP_BOUNDS.y1 - MAP_BOUNDS.y0) * (MAP_H - 70)
   };
 }
 const heatColor = h => (h >= 3 ? "#e5484d" : h >= 2 ? "#f5a524" : h >= 1 ? "#c9b83a" : "#3fae6a");
+const POP_COLOR = "#4da3ff";
 
-// Mapa Prahy: kde právě jsi, odkud píšou zákazníci a kolik by cesta trvala.
-// Vzdálenost od tebe určuje čas doručení – ve stejné čtvrti je to jen 10 minut.
+// úroveň známosti čtvrti: ikona a název
+function popInfo(pop) {
+  if (pop >= 4) return { icon: "🔥", label: "Hvězda" };
+  if (pop >= 2) return { icon: "🌟", label: "Známý" };
+  if (pop >= 1) return { icon: "📦", label: "Místní" };
+  return { icon: "🕳️", label: "Neznámý" };
+}
+
+// půlkruhový měřič kolem bodu: left = zleva zdola nahoru, right = zprava zdola nahoru; frac 0–1
+function halfArc(cx, cy, r, side, frac) {
+  const f = Math.max(0, Math.min(1, frac));
+  if (f <= 0) return "";
+  const a0 = Math.PI / 2;                                  // dole
+  const a1 = side === "left" ? a0 + Math.PI * f : a0 - Math.PI * f;
+  const pt = a => `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+  return `M${pt(a0)} A${r},${r} 0 0 ${side === "left" ? 1 : 0} ${pt(a1)}`;
+}
+
+// Mapa Prahy místo tabulky čtvrtí. Každý uzel je kruh rozdělený na dvě poloviny:
+//  • LEVÝ půlkruh (modrý) = popularita, plní se zdola nahoru, 🌟 vedle jména
+//  • PRAVÝ půlkruh (zelená → červená) = policie, při plném kruhu přijde zátah, 🚨 vedle jména
+//  • číslo na uzlu = čekající poptávky, čárkovaná trasa = cesta k nim s časem
+//  • bílá tečka s pulzem = kde právě jsi
 function renderMap() {
   const box = $("mapBox");
   if (!box || !S) return;
@@ -1741,39 +1749,62 @@ function renderMap() {
   const mp = mapPoint(me);
   $("mapWhere").textContent = S.loc === "home" ? "· jsi doma" : `· jsi v ${S.loc}`;
 
-  // řeka jako dekorace
-  const rv = [{ x: 0.9, y: 5 }, { x: 0.8, y: 2.8 }, { x: -0.2, y: 0.2 }, { x: -0.6, y: -2.5 }, { x: 0.3, y: -5.5 }, { x: 0.8, y: -7.4 }].map(mapPoint);
-  const river = `M${rv[0].x},${rv[0].y} C${rv[1].x},${rv[1].y} ${rv[2].x},${rv[2].y} ${rv[3].x},${rv[3].y} S${rv[4].x},${rv[4].y} ${rv[5].x},${rv[5].y}`;
+  // Vltava jako dekorace: od severu mezi Letnou a Holešovicemi dolů na jih
+  const rv = [{ x: 1.3, y: 4.6 }, { x: 0.0, y: 3.0 }, { x: -0.6, y: 0.8 }, { x: -0.3, y: -1.6 }, { x: 0.1, y: -4.2 }, { x: 0.3, y: -6.2 }, { x: -0.2, y: -7.6 }].map(mapPoint);
+  const river = `M${rv[0].x},${rv[0].y} C${rv[1].x},${rv[1].y} ${rv[2].x},${rv[2].y} ${rv[3].x},${rv[3].y} S${rv[5].x},${rv[5].y} ${rv[6].x},${rv[6].y}`;
 
-  let lines = "", nodes = "";
+  const R = 16;
+  let lines = "", labels = "", nodes = "";
   districtNames.forEach(d => {
-    const p = mapPoint(districts[d]);
+    const dd = districts[d];
+    const p = mapPoint(dd);
     const h = S.police[d] || 0;
-    const r = 7 + S.pop[d] * 2.2;
+    const hp = Math.round(h / 3.5 * 100);
+    const info = popInfo(S.pop[d]);
+    const col = heatColor(h);
+    const right = dd.side === "right";
+    const lx = right ? p.x + R + 8 : p.x - R - 8;
+    const anchor = right ? "start" : "end";
+
+    // čas cesty a příjezd píšeme ke jménu čtvrti (nepřekrývá se s trasami a kruhy)
+    const eta = open[d] ? travelTime(S.loc, d) : null;
+    // trasa z místa, kde jsi, k čtvrti s poptávkou (končí u okraje kruhu)
     if (open[d] && S.loc !== d) {
-      const mx = (mp.x + p.x) / 2, my = (mp.y + p.y) / 2;
-      lines += `<line x1="${mp.x}" y1="${mp.y}" x2="${p.x}" y2="${p.y}" class="route"/>`
-        + `<text x="${mx}" y="${my - 3}" class="route-t">${fmtDur(travelTime(S.loc, d))}</text>`;
+      const dx = p.x - mp.x, dy = p.y - mp.y, L = Math.hypot(dx, dy);
+      const ux = dx / L, uy = dy / L;
+      const a = (S.loc === "home" ? 12 : R + 4), b = R + 5;
+      if (L > a + b + 6) {
+        const x1 = mp.x + ux * a, y1 = mp.y + uy * a, x2 = p.x - ux * b, y2 = p.y - uy * b;
+        lines += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="route"/>`;
+      }
     }
-    nodes += `<g class="node${S.loc === d ? " here" : ""}">
-      <title>${d}: popularita ${S.pop[d].toFixed(1)}/5, policie ${Math.round(h / 3.5 * 100)} %</title>
-      <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${heatColor(h)}" fill-opacity="0.85"/>
-      <text x="${p.x}" y="${p.y + r + 11}" class="node-label">${d}</text>
-      ${open[d] ? `<circle cx="${p.x + r}" cy="${p.y - r}" r="8" class="badge-c"/><text x="${p.x + r}" y="${p.y - r + 3.5}" class="badge-t">${open[d]}</text>` : ""}
+
+    nodes += `<g class="node${S.loc === d ? " here" : ""}${h >= 3 ? " danger" : ""}">
+      <title>${d}\n🌟 popularita: ${info.label} (${S.pop[d].toFixed(1)}/5)\n🚨 policie: ${hp} %</title>
+      <circle cx="${p.x}" cy="${p.y}" r="${R - 3}" class="disc"/>
+      <path d="${halfArc(p.x, p.y, R, "left", 1)}" class="arc-bg"/>
+      <path d="${halfArc(p.x, p.y, R, "right", 1)}" class="arc-bg"/>
+      <path d="${halfArc(p.x, p.y, R, "left", S.pop[d] / 5)}" class="arc pop"/>
+      <path d="${halfArc(p.x, p.y, R, "right", h / 3.5)}" class="arc heat" stroke="${col}"/>
+      <text x="${lx}" y="${p.y - 6}" class="node-label" text-anchor="${anchor}">${d}</text>
+      <text x="${lx}" y="${p.y + 5}" class="node-sub" text-anchor="${anchor}" fill="${POP_COLOR}">${info.icon} ${info.label}</text>
+      <text x="${lx}" y="${p.y + 15.5}" class="node-sub" text-anchor="${anchor}" fill="${col}">🚨 ${hp} %</text>
+      ${eta !== null ? `<text x="${lx}" y="${p.y + 26}" class="node-eta" text-anchor="${anchor}">🕘 ${clockAt(eta)} · ${fmtDur(eta)}</text>` : ""}
+      ${open[d] ? `<circle cx="${p.x}" cy="${p.y}" r="8.5" class="badge-c"/><text x="${p.x}" y="${p.y + 3.8}" class="badge-t">${open[d]}</text>` : ""}
     </g>`;
   });
   const hp = mapPoint(HOME);
-  box.innerHTML = `<svg viewBox="0 0 320 300" class="map-svg" role="img" aria-label="Mapa čtvrtí">
+  box.innerHTML = `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" class="map-svg" role="img" aria-label="Mapa čtvrtí">
     <path d="${river}" class="river"/>
     ${lines}
     ${nodes}
-    <text x="${hp.x}" y="${hp.y + 4}" class="home-t">🏠</text>
+    <text x="${hp.x}" y="${hp.y + 5}" class="home-t">🏠</text>
+    ${labels}
     <circle cx="${mp.x}" cy="${mp.y}" r="9" class="ping"/>
     <circle cx="${mp.x}" cy="${mp.y}" r="5" class="me-dot"/>
   </svg>
-  <div class="map-legend muted">Barva = policie · velikost = popularita · číslo = čekající poptávky · ● ty</div>`;
+  <div class="map-legend muted"><span style="color:${POP_COLOR}">◖ levý půlkruh = popularita 🌟</span> · <span style="color:#e5a24d">pravý = policie 🚨 (plný kruh = zátah)</span> · číslo = čekající poptávky · ● ty</div>`;
 }
-
 function daysToRent() { return (30 - (S.day % 30)) % 30; }
 
 function updateStatus() {
@@ -1788,7 +1819,7 @@ function updateStatus() {
     <div class="pill"><span class="pi">📅</span><b>${dayName(S.day)}</b><small>den ${S.day}</small></div>
     <div class="pill money"><span class="pi">💰</span><b>${fmt(S.money)} Kč</b></div>
     <div class="pill${stashWarn}"><span class="pi">❄️</span><b>${S.supply}/${cap()} g</b></div>
-    <div class="pill${S.timeLeft <= 0 ? " warn" : ""}"><span class="pi">⏱️</span><b>${fmtDur(S.timeLeft)}</b></div>`;
+    <div class="pill${S.timeLeft < 0.5 ? " warn" : ""}"><span class="pi">🕗</span><b>${clockAt()}</b><small>do ${shiftEndClock()}</small></div>`;
 
   const pct = Math.min(100, S.money / GOAL_MONEY * 100);
   const chips = [
@@ -1811,7 +1842,6 @@ function updateStatus() {
   const subs = Math.round(1200 + S.stats.delivered * 41 + districtNames.reduce((a, d) => a + S.pop[d], 0) * 220);
   $("subsCount").textContent = `kanál · ${fmt(subs)} odběratelů`;
 
-  renderDistrictTable();
   renderSecurity();
   renderCars();
   renderUpgrades();
@@ -1978,12 +2008,13 @@ function advanceDay() {
   S.loc = "home";   // ráno vyrážíš z bytu
   S.offered = {};
   districtNames.forEach(d => { S.freq[d] = 0; });
-  S.timeLeft = 4 + S.runners;
+  S.timeLeft = shiftLen();
 
   $("gameLog").innerHTML = "";
   unreadCount = 0;
   updateScrollBtn();
   logMessage(`📆 ${dayName(S.day)} – Začíná den ${S.day}`);
+  logMessage(`🕗 Směna ${SHIFT_START_H}:00 – ${shiftEndClock()}`);
   logMessage(summary);
   if (lost.length) logMessage(`🥶 Konkurence ti zabírá trh: ${lost.join(", ")}.`);
   if (policeNote) { logMessage(policeNote); checkHeat(policeTarget); }
@@ -2005,7 +2036,7 @@ function advanceDay() {
     if (S.money >= upkeep) S.money -= upkeep;
     else {
       S.runners--;
-      S.timeLeft = 4 + S.runners;
+      S.timeLeft = shiftLen();
       logMessage("🏃 Nemáš na výplatu – jeden kurýr odešel.");
     }
   }

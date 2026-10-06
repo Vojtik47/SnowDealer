@@ -263,15 +263,21 @@
     .react { background: #0f1923; border-radius: 999px; padding: 1px 8px; color: #c3cfda; }
 
     /* ---------- mapa ---------- */
-    .map-svg { width: 100%; height: auto; display: block; background: #0f1923; border-radius: 12px; }
+    .map-svg { width: 100%; max-width: 620px; margin: 0 auto; height: auto; display: block; background: #0f1923; border-radius: 12px; }
     .map-svg .river { fill: none; stroke: #1d4a73; stroke-width: 14; stroke-linecap: round; opacity: 0.45; }
-    .map-svg .node-label { fill: #c3cfda; font-size: 9.5px; text-anchor: middle; pointer-events: none; }
-    .map-svg .node circle { transition: fill 0.5s; }
-    .map-svg .node.here circle:first-of-type { stroke: #fff; stroke-width: 1.5; }
-    .map-svg .badge-c { fill: var(--accent); }
+    .map-svg .node-label { fill: #e8eff6; font-size: 11px; font-weight: 700; pointer-events: none; }
+    .map-svg .node-sub { font-size: 9.5px; pointer-events: none; font-variant-numeric: tabular-nums; }
+    .map-svg .disc { fill: #101c27; }
+    .map-svg .arc-bg { fill: none; stroke: #223445; stroke-width: 5; stroke-linecap: round; }
+    .map-svg .arc { fill: none; stroke-width: 5; stroke-linecap: round; transition: stroke 0.6s; }
+    .map-svg .arc.pop { stroke: #4da3ff; }
+    .map-svg .node.here .disc { stroke: #fff; stroke-width: 1.2; }
+    .map-svg .node:hover .arc-bg { stroke: #3a5671; }
+    .map-svg .node.danger .arc.heat { animation: danger 0.9s ease-in-out infinite; }
+    @keyframes danger { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .map-svg .node-eta { fill: #9ad0ff; font-size: 9.5px; font-weight: 600; pointer-events: none; }    .map-svg .badge-c { fill: var(--accent); }
     .map-svg .badge-t { fill: #0b141e; font-size: 10px; font-weight: 800; text-anchor: middle; pointer-events: none; }
     .map-svg .route { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 4 4; opacity: 0.75; }
-    .map-svg .route-t { fill: #9ad0ff; font-size: 9px; text-anchor: middle; paint-order: stroke; stroke: #0f1923; stroke-width: 3px; }
     .map-svg .home-t { font-size: 14px; text-anchor: middle; }
     .map-svg .me-dot { fill: #fff; stroke: var(--accent); stroke-width: 2; }
     .map-svg .ping { fill: none; stroke: var(--accent); stroke-width: 2; animation: ring 1.6s ease-out infinite; transform-box: fill-box; transform-origin: center; }
@@ -372,11 +378,6 @@
         <div id="mapBox"></div>
       </div>
 
-      <div class="card">
-        <h3>📍 Čtvrti</h3>
-        <div id="districtTableContainer"></div>
-      </div>
-
       <div id="telegramFeed" class="card">
         <div class="channel-head">
           <div class="avatar big">📢</div>
@@ -426,8 +427,8 @@
       <div id="howToPlay">
         <ul>
           <li>🎯 <b>Cíl:</b> našetři 1 000 000 Kč a zmiz z Prahy</li>
-          <li>🌙 Objednávky přijdou po kliknutí na „Další den". Den má jen pár hodin – každé doručení ti nějakou ubere</li>
-          <li>🗺️ <b>Mapa:</b> doba cesty závisí na tom, kde zrovna jsi. Po doručení v Dejvicích mají další poptávky z Dejvic jen 10 minut, jiné čtvrti jsou daleko. Ráno vyrážíš z bytu. Pozor: opakovaná doručení v jedné čtvrti zvedají heat</li>
+          <li>🌙 Objednávky přijdou po kliknutí na „Další den". Pracuješ od 20:00 do 01:00. Cesta mezi čtvrtěmi ti ubírá čas, u každé nabídky vidíš, kdy dorazíš. Co nestihneš před koncem směny, je červené</li>
+          <li>🗺️ <b>Mapa:</b> levý půlkruh u čtvrti je popularita, pravý policie (plný kruh = zátah). Doba cesty závisí na tom, kde zrovna jsi. Po doručení v Dejvicích mají další poptávky z Dejvic jen 10 minut, jiné čtvrti jsou daleko. Ráno vyrážíš z bytu. Pozor: opakovaná doručení v jedné čtvrti zvedají heat</li>
           <li>💬 Zákazníci ti píšou v chatu. Přijmi nebo odmítni. Ti, které obsloužíš, se stanou stálými a platí víc</li>
           <li>💎 Cenu nabídky ti nikdo nehodnotí. Zjisti sám, co je hodně nad cenou – někdy je to past</li>
           <li>🚗 Lepší auto zkracuje doručení a zvyšuje popularitu, ale je nápadnější pro policii a platíš provoz každý den. Bez peněz na provoz jedeš tramvají</li>

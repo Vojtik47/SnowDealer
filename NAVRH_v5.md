@@ -63,7 +63,7 @@ Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord
 - **Chat:** objednávky jsou bubliny zákazníků s avatarem, nickem, čtvrtí a časem. Pod bublinou je shrnutí objednávky a tlačítka Přijmout / Odmítnout jako inline klávesnice v Telegramu. Tvoje odpověď se objeví jako modrá bublina vpravo („jasně, jedu" / „dneska ne, sorry"), výsledek jako šedá systémová hláška.
 - **Události** přijdou jako zpráva od „🎲 Událost" (quicktime od „⚡ Quicktime" s odpočtem) a tvoje volba se vypíše jako odpověď.
 - **Kanál Snow Reviews:** recenze jsou příspěvky s avatarem, reakcemi 👍🔥/👎 a časem. Počet odběratelů roste s tvou slávou.
-- **Horní lišta** s ukazateli (den, peníze, stash, hodiny), **cíl** s progress barem a čipy (zátahy, nájem, dluh), **čtvrti** jako karty s měřiči popularity a policie.
+- **Horní lišta** s ukazateli (den, peníze, stash, hodiny), **cíl** s progress barem a čipy (zátahy, nájem, dluh), **mapa** čtvrtí, kde je u každé čtvrti vidět popularita i policie (viz níže).
 - **Obchod** je v záložkách: Dodavatelé, Auta, Zázemí, Policie. V pondělí se automaticky otevřou dodavatelé a na záložce svítí zelená tečka.
 - Tmavý vzhled, animace, funguje i na mobilu.
 
@@ -73,9 +73,15 @@ Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord
 - **Nájem** roste jen jednou za 2 měsíce o 2 000 Kč: 12 000 Kč první dva měsíce, pak 14 000, 16 000 … (strop 40 000 Kč). Po roce hry je to 22 000 Kč.
 - **Nabídky ze všech čtvrtí.** Známost čtvrti zvyšuje šanci, ale ne o řád: hodně známá čtvrť má asi 2,5× větší šanci než neznámá (dřív 9×). Nenavštívené čtvrti dostávají bonus a čtvrť, která už dnes psala, je méně pravděpodobná.
 - **Chat se sám neposouvá.** Když přijde nová zpráva, chat zůstane, kde je, takže neklikneš na jinou nabídku. Dole se objeví šipka „↓" s počtem nových zpráv. Text se píše po písmenkách, ale tlačítka pod bublinou zůstávají na místě.
-- **Mapa.** Čtvrti mají polohu a doba cesty se počítá z toho, kde jsi. Ráno vyrážíš z bytu. Po doručení v Dejvicích mají další poptávky z Dejvic jen 10 minut a jiné čtvrti jsou daleko. Časy se přepočítají u všech otevřených nabídek. Mapa ukazuje tebe, čekající poptávky, popularitu (velikost) a policii (barva). Rychlost aut: tramvaj 3,4, Yamaha 4,6, Golf 6, BMW 330D 7,6, M4 9,5 km/h v herním čase.
+- **Mapa.** Čtvrti mají polohu a doba cesty se počítá z toho, kde jsi. Ráno vyrážíš z bytu. Po doručení v Dejvicích mají další poptávky z Dejvic jen 10 minut a jiné čtvrti jsou daleko. Časy se přepočítají u všech otevřených nabídek. Mapa ukazuje tebe, čekající poptávky s časem cesty a u každé čtvrti stav: vnější kruh je policie (zelená → červená, při 100 % přijde zátah, červený kruh bliká), modrý střed je popularita (čím známější, tím větší) s ikonou úrovně. Samostatný blok se čtvrtěmi proto zmizel. Rychlost aut: tramvaj 3,4, Yamaha 4,6, Golf 6, BMW 330D 7,6, M4 9,5 km/h v herním čase.
 - **Dodavatelé nejde přeskočit omylem.** Když jsou dnes dodavatelé, něco z nabídky by šlo koupit a ještě jsi nic nekoupil, hra se před koncem dne zeptá, jestli opravdu chceš spát bez nákupu.
 - **Heat:** při zatčení se heat nesnižuje (dřív tabulka ukazovala 43 % místo 100 %) a u měřiče je procento.
+
+## 2e. Mapa podruhé a směna
+
+- **Půlkruhy:** každá čtvrť na mapě je kruh rozdělený na dvě poloviny. Levý (modrý) je popularita, pravý (zelená → červená) je policie. Vedle jména je 🌟 úroveň známosti, 🚨 procento policie a, pokud čeká poptávka, 🕘 čas příjezdu a doba cesty. Trasy jsou čárkované čáry bez popisků, takže nic nepřekrývají.
+- **Realističtější Praha:** Letná je hned vedle Holešovic (přes Vltavu), Dejvice na severozápadě, Karlín–Žižkov–Vinohrady v řadě na východě, Smíchov na jihozápadě a Modřany daleko na jihu. Řeka teče mezi Letnou a Holešovicemi.
+- **Směna 20:00–01:00** místo „4 hodin". Hodiny běží podle toho, co děláš (cesty, události). U každé nabídky je doba cesty i čas příjezdu, červeně když by ses nestihl před koncem směny. Kurýr prodlouží směnu o hodinu.
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.
