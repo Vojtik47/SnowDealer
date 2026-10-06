@@ -1,4 +1,4 @@
-# Sněhový Dealer v5.0 – návrh oprav a upgradu
+# Sněhový Dealer v5.4 – návrh oprav a upgradu
 
 Nahrazuje `index.html` a `GameLogic.js` z verze 4.3 (originály jsou ve složce `original/`).
 Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord_alert.mp3` má v repozitáři jen 21 bajtů, takže je asi prázdný nebo poškozený.
@@ -49,10 +49,10 @@ Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord
   | Auto | Cena | Čas | Popularita | Heat | Provoz/den |
   |------|------|-----|------------|------|------------|
   | Tramvaj | 0 | +1 h | 0 | ×0,8 | 0 |
-  | Yamaha Aerox | 12 000 | +0,25 h | +0,2 | ×0,9 | 100 |
-  | Golf 2001 | 30 000 | −0,5 h | +0,4 | ×1 | 250 |
-  | BMW 330D | 65 000 | −1 h | +0,8 | ×1,15 | 500 |
-  | BMW M4 | 300 000 | −1,5 h | +1,5 | ×1,4 | 1 200 |
+  | Yamaha Aerox | 40 000 | +0,25 h | +0,2 | ×0,9 | 100 |
+  | Golf 2001 | 60 000 | −0,5 h | +0,4 | ×1 | 250 |
+  | BMW 330D | 220 000 | −1 h | +0,8 | ×1,15 | 500 |
+  | BMW M4 | 2 200 000 | −1,5 h | +1,5 | ×1,4 | 1 200 |
 - **Víc eventů.** 27 místo 15. Nové: honička s policií, domovník, anonym (tyto tři jsou na čas a při vypršení se rozhodne za tebe), poker, Wolt, Frozone mimo pondělí, influencerka, uklízečka, pivo, taxi, velká objednávka, novinář, reklamace. Event přijde nejdřív 4 dny po předchozím a pak s 30% šancí denně, tedy průměrně jednou za ~6 dní. Quicktime event nejvýš jednou za 10 dní. Stejný event se neopakuje, dokud neproběhlo 10 jiných. Eventy se losují na začátku dne a „Další den" nejde, dokud je neodpovíš, takže se nedají přeskočit.
 - **Ceny dodavatelů:** průměrně ~1 450 Kč za gram (5 g ≈ 1 500, větší balení o něco levněji). Týdenní trh jen ±10 %, dodavatelé -15 % až +10 %.
 - **Log:** u doručení se už nepíše změna heatu. Heat vidíš jen v tabulce čtvrtí, plus varování při vyšších úrovních.
@@ -82,6 +82,19 @@ Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord
 - **Půlkruhy:** každá čtvrť na mapě je kruh rozdělený na dvě poloviny. Levý (modrý) je popularita, pravý (zelená → červená) je policie. Vedle jména je 🌟 úroveň známosti, 🚨 procento policie a, pokud čeká poptávka, 🕘 čas příjezdu a doba cesty. Trasy jsou čárkované čáry bez popisků, takže nic nepřekrývají.
 - **Realističtější Praha:** Letná je hned vedle Holešovic (přes Vltavu), Dejvice na severozápadě, Karlín–Žižkov–Vinohrady v řadě na východě, Smíchov na jihozápadě a Modřany daleko na jihu. Řeka teče mezi Letnou a Holešovicemi.
 - **Směna 20:00–01:00** místo „4 hodin". Hodiny běží podle toho, co děláš (cesty, události). U každé nabídky je doba cesty i čas příjezdu, červeně když by ses nestihl před koncem směny. Kurýr prodlouží směnu o hodinu.
+
+## 2f. Kolik lidí denně píše
+
+Počet nabídek se už nepůlí. Základ je `1,5 + 1,1 × nejvyšší popularita` a násobí se dnem v týdnu: pondělí 0,45, úterý 0,5, středa 0,55, čtvrtek 1,0, pátek a sobota 1,8, neděle 0,7. Zaokrouhluje se náhodně, aby průměr seděl. Strop je 14 denně. Při popularitě 5 vychází pondělí ~3, čtvrtek ~7, pátek a sobota ~12, neděle ~5. Při popularitě 3 pondělí ~2, pátek ~9.
+
+## 2g. Pozdní hra: co dělat s penězi
+
+- **Policejní kontakty** (Zázemí): pasivně snižují heat ve všech čtvrtích každý den za denní provoz. Informátor 60 000 Kč (−0,15 heat/den, 1 500 Kč/den), Důstojník 150 000 Kč (−0,30, 3 500 Kč/den), Náměstek 400 000 Kč (−0,50, 8 000 Kč/den). Když není na provoz, kontakt odejde. Netřeba pořád kupovat SIM a holiče.
+- **Velkoodběratelé:** ve čtvrti s popularitou 3,5+ napíše klub, hotel nebo firma (nejvýš 1 denně, jen když máš aspoň 10 g). Chce 10, 15, 20, 30 nebo 50 g za 2 700 až 3 200 Kč/g, běžně je to kolem 2 400. Heat za velkou zásilku neroste lineárně.
+- **Prodejci:** v každé čtvrti jeden (najmutí 25 000 Kč, provoz 800 Kč/den), pak tým (60 000 Kč, provoz 2 000 Kč/den, dvojnásobný prodej). Přes noc prodají z tvého stashe asi `1 + 0,7 × popularita` g (tým dvojnásobek) za cca 2 000 Kč/g, přidají heat (0,06 za gram) a drží čtvrť „živou". Při heatu 3+ je 10% denní šance, že prodejce zatknou. Bez peněz na výplatu odejdou.
+- **Cena podle slávy:** běžné objednávky platí o 6 % víc za každý bod popularity nad 1 (popularita 5 = +24 %).
+- **Auta za realistické ceny** (český trh, ojetá): Yamaha Aerox 40 000 Kč, Golf IV 1.9 TDI 60 000 Kč, BMW 330d 220 000 Kč, Škoda Octavia RS 600 000 Kč, Audi RS6 Avant 1 600 000 Kč, BMW M4 (nové) 2 200 000 Kč. Provoz na den: 100 / 250 / 500 / 700 / 1 600 / 1 800 Kč.
+- **Nové čtvrti:** Libeň 60 000, Vršovice 90 000, Břevnov 120 000, Nusle 150 000 Kč. Na mapě jsou vidět jako zamčené stíny s cenou. Každá má 11 vlastních nicků.
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.

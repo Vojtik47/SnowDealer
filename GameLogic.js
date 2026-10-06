@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.0
+// Sněhový Dealer – verze 5.4
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.0";
-const BUILD = "2026-10-06.1";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.4";
+const BUILD = "2026-10-06.4";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -26,8 +26,16 @@ const districts = {
   "Žižkov": { x: 2.9, y: -0.1, side: "right" },        // východ
   "Vinohrady": { x: 3.1, y: -1.8, side: "right" },    // jihovýchod
   "Smíchov": { x: -1.7, y: -2.3, side: "left" },      // jihozápad, za řekou
-  "Modřany": { x: 0.9, y: -7.2, side: "right" }       // daleko na jihu
-};const HOME = { x: 0.3, y: 0.2 };       // tvůj byt blízko centra, odkud vyrážíš
+  "Modřany": { x: 0.9, y: -7.2, side: "right" },      // daleko na jihu
+  // čtvrti, které si můžeš odemknout (kontakty ve čtvrti)
+  "Libeň": { x: 3.2, y: 4.8, side: "right" },
+  "Vršovice": { x: 3.9, y: -3.6, side: "right" },
+  "Břevnov": { x: -4.0, y: 1.0, side: "left" },
+  "Nusle": { x: 1.3, y: -3.7, side: "left" }
+};
+const BASE_DISTRICTS = ["Dejvice", "Letná", "Holešovice", "Karlín", "Žižkov", "Vinohrady", "Smíchov", "Modřany"];
+const EXTRA_DISTRICTS = { "Libeň": 60000, "Vršovice": 90000, "Břevnov": 120000, "Nusle": 150000 };   // cena odemčení
+const HOME = { x: 0.3, y: 0.2 };       // tvůj byt blízko centra, odkud vyrážíš
 const STREET_FACTOR = 1.25;            // ulice nejsou vzdušnou čarou
 const HANDOVER_H = 0.17;               // předání ve stejné čtvrti = 10 minut
 const districtCustomers = {
@@ -46,9 +54,21 @@ const districtCustomers = {
   "Letná": ["@letnapivo", "@Metr Párna", "@Hajzlberg", "@letna_influ", "@dogsitterka",
     "@letenska_lenka", "@sparta_fanda", "@hipster_hugo", "@metronom_mara", "@pivni_zahradka", "@kocarek_kamil"],
   "Modřany": ["@modranboy", "@vlakfetak", "@kralpanelaku", "@cyklosnek", "@kajakboss",
-    "@panelak_pavel", "@rybar_rosta", "@bazen_bobo", "@tramvaj_17_tomas", "@vyhlidka_vilda", "@zahradkar_zdenek"]
+    "@panelak_pavel", "@rybar_rosta", "@bazen_bobo", "@tramvaj_17_tomas", "@vyhlidka_vilda", "@zahradkar_zdenek"],
+  "Libeň": ["@libensky_most_milan", "@dopravak_dan", "@kulturak_karel", "@fotbal_filip", "@pivnice_pepik", "@spalovna_sasa",
+    "@kraska_katka", "@trojsky_tomas", "@sidlisko_stan", "@taborak_ted", "@o2_arena_olda"],
+  "Vršovice": ["@eden_edvard", "@slavia_sasa", "@kavarna_klara", "@ruzova_vila_ruda", "@sousedka_sona", "@vrsovicak_vasek",
+    "@stadion_standa", "@kocar_karla", "@bohemka_boris", "@zahrada_zdena", "@tramvaj_6_tonda"],
+  "Břevnov": ["@klaster_kuba", "@pivovar_petr", "@vila_vojta", "@motol_monika", "@bila_hora_hynek", "@strahov_stepan",
+    "@dobrovic_dana", "@brevnovska_bara", "@hriste_honza", "@zeleny_zdenek", "@sparta_sasa_b"],
+  "Nusle": ["@nuselak_nick", "@most_michal", "@pankrac_pavel", "@kongres_karolina", "@bytak_boris", "@nuselske_schody_sam",
+    "@pivnice_pavla", "@lekarnik_lubos", "@tramvaj_11_tom", "@zumba_zita", "@budova_bruno"]
 };
-const districtNames = Object.keys(districts);
+const districtNames = BASE_DISTRICTS.slice();   // aktivní čtvrti; viz syncDistricts()
+function syncDistricts() {
+  districtNames.length = 0;
+  districtNames.push(...BASE_DISTRICTS, ...Object.keys(EXTRA_DISTRICTS).filter(d => S && S.unlocked && S.unlocked.includes(d)));
+}
 
 // Základní ceny pro zákaznické objednávky (1–5 g)
 const customerBasePrices = { 1: 3000, 2: 5000, 3: 6500, 4: 8000, 5: 9500 };
@@ -59,10 +79,12 @@ const customerBasePrices = { 1: 3000, 2: 5000, 3: 6500, 4: 8000, 5: 9500 };
 // upkeep = denní provoz (palivo, servis). Bez peněz auto stojí a jedeš MHD
 const CARS = [
   { name: "🚋 Tramvaj", price: 0, speed: 3.4, pop: 0, heat: 0.8, upkeep: 0, note: "nenápadná, ale pomalá" },
-  { name: "🛵 Yamaha Aerox", price: 12000, speed: 4.6, pop: 0.2, heat: 0.9, upkeep: 100, note: "levný skútr, skoro nenápadný" },
-  { name: "🚗 Golf 2001 1.9TDI", price: 30000, speed: 6, pop: 0.4, heat: 1, upkeep: 250, note: "pracovní kůň" },
-  { name: "🚙 BMW 330D", price: 65000, speed: 7.6, pop: 0.8, heat: 1.15, upkeep: 500, note: "rychlé, ale už se na něj kouká" },
-  { name: "🏎️ BMW M4", price: 300000, speed: 9.5, pop: 1.5, heat: 1.4, upkeep: 1200, note: "nejrychlejší a nejviditelnější" }
+  { name: "🛵 Yamaha Aerox", price: 40000, speed: 4.6, pop: 0.2, heat: 0.9, upkeep: 100, note: "ojetý skútr, skoro nenápadný" },
+  { name: "🚗 Golf 2001 1.9TDI", price: 60000, speed: 6, pop: 0.4, heat: 1, upkeep: 250, note: "ojetá, pracovní kůň" },
+  { name: "🚙 BMW 330D", price: 220000, speed: 7.6, pop: 0.8, heat: 1.15, upkeep: 500, note: "ojeté, rychlé, ale už se na něj kouká" },
+  { name: "🚙 Škoda Octavia RS", price: 600000, speed: 8.2, pop: 1.0, heat: 1.2, upkeep: 700, note: "ojetá, rodinné kombi, které umí" },
+  { name: "🚘 Audi RS6 Avant", price: 1600000, speed: 8.9, pop: 1.3, heat: 1.3, upkeep: 1600, note: "ojeté, dodávka se sportovním srdcem" },
+  { name: "🏎️ BMW M4", price: 2200000, speed: 9.5, pop: 1.5, heat: 1.4, upkeep: 1800, note: "nový, nejrychlejší a nejviditelnější" }
 ];
 const carByName = name => CARS.find(c => c.name === name) || CARS[0];
 
@@ -95,6 +117,14 @@ const RUNNERS = [
   { price: 80000, upkeep: 1200 }
 ];
 const LAWYER_PRICE = 40000;
+// Policejní kontakty: pasivně snižují heat ve všech čtvrtích každý den, za denní provoz (místo pořád dokola kupovat SIM)
+const CONTACTS = [
+  { name: "Informátor na služebně", price: 60000, upkeep: 1500, cool: 0.15 },
+  { name: "Důstojník na zakázku", price: 150000, upkeep: 3500, cool: 0.30 },
+  { name: "Náměstek policejního ředitele", price: 400000, upkeep: 8000, cool: 0.50 }
+];
+// Prodejci: sami prodávají část poptávky ve své čtvrti (z tvého stashe), ale přidávají heat
+const DEALER = { hire: 25000, upkeep: 800, upgrade: 60000, upkeep2: 2000, pricePerG: 2000, heatPerG: 0.06 };
 
 const ACHIEVEMENTS = {
   first: { name: "První kontakt", desc: "Doruč první objednávku" },
@@ -186,13 +216,14 @@ function newState() {
     lastHaircutDay: null, secUsed: false, carDown: false,
     lastEventDay: 0, lastQuickDay: 0, recentEvents: [],
     loc: "home", offered: {}, boughtToday: false,
+    contact: 0, dealers: {}, unlocked: [], vipToday: 0,
     market: 1, supplierOffers: [], pending: [], seq: 0,
     pop: {}, police: {}, warned: {}, idle: {}, freq: {},
     accepted: {}, loyalty: {}, usedToday: [], salesToday: false,
     today: { delivered: 0, grams: 0, startMoney: 5000 },
     stats: { delivered: 0, grams: 0, earned: 0, raids: 0 }
   };
-  districtNames.forEach(d => {
+  BASE_DISTRICTS.forEach(d => {
     s.pop[d] = 0.5; s.police[d] = 0; s.warned[d] = 0; s.idle[d] = 0; s.freq[d] = 0;
   });
   return s;
@@ -638,6 +669,9 @@ function pickDistrict() {
   return pick;
 }
 
+// "Karlín" → "karlin" (pro jména velkoodběratelů jako @klub_karlin)
+const districtSlug = d => d.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
 function pickCustomer(d) {
   const list = districtCustomers[d];
   const unused = list.filter(n => !S.usedToday.includes(n));
@@ -649,23 +683,23 @@ function pickCustomer(d) {
   return nick;
 }
 
+// Kolik lidí dnes napíše. Základ roste s nejvyšší popularitou, a pak se násobí dnem v týdnu:
+// pondělí až středa je klid, čtvrtek se rozjíždí, nejvíc je v pátek a v sobotu, v neděli jen pár.
+const WEEKDAY_DEMAND = {
+  "Pondělí": 0.45, "Úterý": 0.5, "Středa": 0.55, "Čtvrtek": 1.0,
+  "Pátek": 1.8, "Sobota": 1.8, "Neděle": 0.7
+};
+const MAX_OFFERS_PER_DAY = 14;
+
 function offersForToday() {
   const maxPop = Math.max(...districtNames.map(d => S.pop[d]));
-  let base = Math.min(1 + Math.floor(maxPop / 2), 5);
-  let bonus = Math.floor(maxPop);
-  const today = dayName(S.day);
-  if (today === "Pátek") { base += 3; bonus += 1; }
-  else if (today === "Sobota") { base += 2; bonus += 1; }
-  else if (["Pondělí", "Úterý", "Středa"].includes(today)) {
-    base = Math.max(1, base - 1);
-    bonus = Math.max(0, bonus - 1);
-  }
-  let n = Math.floor((base + bonus) * 0.5);
+  const baseline = 1.5 + 1.1 * maxPop;                    // popularita 0,5 → ~2, 3 → ~4,8, 5 → 7
+  const expected = baseline * WEEKDAY_DEMAND[dayName(S.day)];
+  let n = Math.floor(expected + Math.random());           // náhodné zaokrouhlení, ať průměr sedí
   // rozjezd: prvních 30 dní aspoň 2 objednávky denně, než popularita roste sama
   n = Math.max(n, S.day <= 30 ? 2 : 1);
-  return Math.min(n, 8);
+  return Math.min(n, MAX_OFFERS_PER_DAY);
 }
-
 function startDayOffers() {
   clearOfferTimers();
   const n = offersForToday();
@@ -678,25 +712,44 @@ function startDayOffers() {
 function generateOffer() {
   if (S.over || S.timeLeft <= 0) return;
 
-  const grams = weightedRandomChoice([
+  let grams = weightedRandomChoice([
     { value: 1, weight: 0.40 }, { value: 2, weight: 0.30 }, { value: 3, weight: 0.20 },
     { value: 4, weight: 0.05 }, { value: 5, weight: 0.05 }
   ]);
   const district = pickDistrict();
-  const nickname = pickCustomer(district);
-  const loyal = loyaltyOf(nickname) >= 2;
+  // Velkoodběratel: ve hodně známé čtvrti občas napíše klub, hotel nebo firma. Chce 10–50 g
+  // za lepší cenu za gram. Nejvýš jeden za den a jen když máš aspoň 10 g.
+  const pop = S.pop[district];
+  const vip = pop >= 3.5 && S.vipToday < 1 && S.supply >= 10 && Math.random() < (pop >= 4.5 ? 0.22 : 0.12);
+  if (vip) {
+    const sizes = [10, 15, 20, 30, 50].filter(g => g <= S.supply);
+    grams = sizes[Math.floor(Math.pow(Math.random(), 1.6) * sizes.length)];   // menší zásilky jsou častější
+    S.vipToday++;
+  }
+  const nickname = vip
+    ? `@${rand(["klub", "hotel", "restaurace", "galerie", "kancelar", "festival"])}_${districtSlug(district)}`
+    : pickCustomer(district);
+  const loyal = !vip && loyaltyOf(nickname) >= 2;
 
   // cena: 78 % standard, 12 % sleva, 10 % prémiová (z toho čtvrtina je past)
   const basePrice = customerBasePrices[grams];
   let price = basePrice, trap = false;
-  const roll = Math.random();
-  if (roll >= 0.90) {
-    price = basePrice * (1.25 + Math.random() * 0.15);
-    trap = Math.random() < 0.25;
-  } else if (roll >= 0.78) {
-    price = basePrice * (1 - (0.05 + Math.random() * 0.10));
+  if (vip) {
+    // velká zásilka: čím víc gramů, tím líp za gram (2 700 až 3 200 Kč/g, běžně ~2 400)
+    const perG = grams <= 15 ? 2700 : grams <= 20 ? 2850 : grams <= 30 ? 3000 : 3200;
+    price = grams * perG;
+  } else {
+    const roll = Math.random();
+    if (roll >= 0.90) {
+      price = basePrice * (1.25 + Math.random() * 0.15);
+      trap = Math.random() < 0.25;
+    } else if (roll >= 0.78) {
+      price = basePrice * (1 - (0.05 + Math.random() * 0.10));
+    }
+    // sláva se vyplácí: známá čtvrť platí víc (popularita 5 = +24 %)
+    price *= 1 + 0.06 * Math.max(0, pop - 1);
+    if (loyal) price *= 1 + 0.04 * loyaltyOf(nickname);
   }
-  if (loyal) price *= 1 + 0.04 * loyaltyOf(nickname);
   price = Math.round(price / 100) * 100;
 
   // doba cesty závisí na tom, kde zrovna jsi; po každém doručení se přepočítá u všech otevřených nabídek
@@ -766,6 +819,15 @@ function generateOffer() {
     `vole zrovna mi zdrazili najem, ${grams}g za ${price}kc at to prezijem`,
     `ahojky, ${grams}g do ${district} a ${price}kc, jinak budu muset jit spat v 10 jak sasek`
   ];
+  // velkoodběratelé píšou formálněji (a trochu vtipněji)
+  const vipMessages = [
+    `Dobrý den, zajišťujeme zásobování akce v ${district}. Potřebujeme ${grams}g, nabízíme ${fmt(price)} Kč, termín dnes večer.`,
+    `Zdravím, tady provozovna z ${district}. Brali bychom ${grams}g najednou za ${fmt(price)} Kč, faktura ne, hotově.`,
+    `Dobrý večer, firemní večírek v ${district} a došly nám zásoby. ${grams}g za ${fmt(price)} Kč, platíme ihned.`,
+    `Čau, jsme tu na akci a hosté jsou nenasytní. Zvládneš ${grams}g do ${district}? ${fmt(price)} Kč cash.`,
+    `Dobrý den, doporučil nás ${rand(["kolega", "kamarád", "bratranec"])}. Máte ${grams}g? Za ${fmt(price)} Kč jsme v ${district} do hodiny.`,
+    `Hej, sháníme ${grams}g na dnešní sezení v ${district}, rozpočet ${fmt(price)} Kč. Diskrétnost samozřejmost.`
+  ];
   // stálí zákazníci píšou trochu jinak
   const loyalMessages = [
     `to jsem zase ja, ${grams}g jako vzdycky? ${price}kc ready`,
@@ -776,10 +838,11 @@ function generateOffer() {
     `ty jsi muj nejlepsi dealer a to rikam i mamce. ${grams}g za ${price}kc`
   ];
 
-  const offer = { nickname, district, grams, price, time, trap };
+  const offer = { nickname, district, grams, price, time, trap, vip };
   // cenu nikde nehodnotíme – jestli je nabídka hodně nad nebo pod cenou, musí hráč poznat sám
   const badges = [];
   if (loyal) badges.push(`⭐ stálý zákazník`);
+  if (vip) badges.push(`🏢 velkoodběratel`);
 
   playSound("notif");
   // bublina zákazníka + shrnutí objednávky + tlačítka pod ní jako inline klávesnice v Telegramu
@@ -790,7 +853,7 @@ function generateOffer() {
   card.dataset.district = district;
   card._offer = offer;
   chatAppend(card);   // musí být v DOM dřív, než začne psaní
-  typeInto(b.text, loyal && Math.random() < 0.5 ? rand(loyalMessages) : rand(messages));
+  typeInto(b.text, vip ? rand(vipMessages) : loyal && Math.random() < 0.5 ? rand(loyalMessages) : rand(messages));
 
   const order = document.createElement("div");
   order.className = "order";
@@ -888,7 +951,7 @@ function acceptOfferInner(card, o) {
   unlock("first");
 
   const before = loyaltyOf(o.nickname);
-  const after = changeLoyalty(o.nickname, 1);
+  const after = o.vip ? before : changeLoyalty(o.nickname, 1);
   logMessage(`✅ Doručeno. -${o.grams}g, +${fmt(o.price)} Kč`);
   if (before < 2 && after >= 2) logMessage(`⭐ ${o.nickname} je teď stálý zákazník – platí víc a bude psát častěji.`);
 
@@ -903,7 +966,8 @@ function acceptOfferInner(card, o) {
 // Heat za doručení roste s množstvím, popularitou čtvrti, opakováním v jedné čtvrti
 // a nápadností auta. Rozprostři doručení po městě, ať se čtvrti stihnou zklidnit.
 function deliveryHeat(d, grams) {
-  let gain = (0.08 + 0.05 * grams) * (0.7 + S.pop[d] * 0.12)
+  const eg = grams <= 5 ? grams : 5 + (grams - 5) * 0.12;   // velká zásilka přitahuje víc pozornosti, ale ne lineárně
+  let gain = (0.08 + 0.05 * eg) * (0.7 + S.pop[d] * 0.12)
     * (1 + 0.15 * Math.max(0, S.freq[d] - 1)) * effCar().heat;
   if (Math.random() < 0.25) gain += 0.5;   // někdo tě viděl
   return round2(gain);
@@ -1413,6 +1477,56 @@ function showEvent() {
   playSound("notif");
 }
 
+// Noční provoz: policejní kontakty snižují heat a prodejci prodávají část zásob ve svých čtvrtích.
+function processStaff() {
+  if (S.contact > 0) {
+    const c = CONTACTS[S.contact - 1];
+    if (S.money >= c.upkeep) {
+      S.money -= c.upkeep;
+      districtNames.forEach(d => { S.police[d] = Math.max(0, S.police[d] - c.cool); });
+    } else {
+      S.contact--;
+      logImportantMessage(`🤝 ${c.name} s tebou skončil – nemáš na denní provoz (${fmt(c.upkeep)} Kč).`);
+    }
+  }
+  processDealers();
+}
+
+function processDealers() {
+  const ds = Object.keys(S.dealers).filter(d => districtNames.includes(d));
+  if (!ds.length) return;
+  let sold = 0, income = 0, cost = 0;
+  const arrested = [], quit = [];
+  ds.forEach(d => {
+    const lvl = S.dealers[d];
+    const upkeep = lvl === 2 ? DEALER.upkeep2 : DEALER.upkeep;
+    if (S.money < upkeep) { delete S.dealers[d]; quit.push(d); return; }
+    S.money -= upkeep; cost += upkeep;
+    // prodejce ve čtvrti, kde je policie moc blízko, může skončit v poutech
+    if (S.police[d] >= 3 && Math.random() < 0.10) { delete S.dealers[d]; arrested.push(d); return; }
+    const g = Math.min(Math.floor(1 + S.pop[d] * 0.7) * lvl, S.supply);
+    if (g <= 0) return;
+    const price = Math.round(DEALER.pricePerG * (1 + 0.06 * Math.max(0, S.pop[d] - 1)) / 100) * 100;
+    S.supply -= g; S.money += g * price; sold += g; income += g * price;
+    S.stats.earned += g * price; S.stats.grams += g;
+    S.police[d] = Math.min(3.4, S.police[d] + DEALER.heatPerG * g);
+    S.idle[d] = 0;   // prodejce drží čtvrť „živou“, popularita neklesá
+    checkHeat(d);
+  });
+  logMessage(`🧑‍💼 Prodejci: ${sold} g prodáno, +${fmt(income)} Kč, výplaty −${fmt(cost)} Kč.`);
+  arrested.forEach(d => logImportantMessage(`🚔 Tvého prodejce v ${d} zatkli. Policie tam byla moc blízko.`));
+  quit.forEach(d => logImportantMessage(`🧑‍💼 Prodejce v ${d} odešel – nemáš na výplatu.`));
+}
+
+// odemknutí nové čtvrti
+function unlockDistrict(d) {
+  if (S.over || S.unlocked.includes(d) || !EXTRA_DISTRICTS[d]) return;
+  S.unlocked.push(d);
+  S.pop[d] = 0.5; S.police[d] = 0; S.warned[d] = 0; S.idle[d] = 0; S.freq[d] = 0;
+  syncDistricts();
+  logMessage(`🗺️ Nová čtvrť: ${d}. Zákazníci odtamtud ti začnou psát.`);
+}
+
 // důsledky eventů, které přijdou o pár dní později
 function processPending() {
   const due = S.pending.filter(p => p.day <= S.day);
@@ -1601,10 +1715,10 @@ function renderUpgrades() {
   box.appendChild(title);
   const hint = document.createElement("div");
   hint.className = "hint";
-  hint.textContent = "Kapacita stashe, právník na zátahy a kurýr, který ti dá víc času.";
+  hint.textContent = "Kapacita stashe, právník, kurýr, policejní kontakty, prodejci a nové čtvrti.";
   box.appendChild(hint);
 
-  const add = (text, price, tooltip, fn) => {
+  const add = (text, price, tooltip, fn, parent = box) => {
     const b = document.createElement("button");
     b.className = "btn";
     b.textContent = `${text} – ${fmt(price)} Kč`;
@@ -1616,8 +1730,21 @@ function renderUpgrades() {
       fn();
       updateStatus();
     };
-    box.appendChild(b);
+    parent.appendChild(b);
   };
+  const heading = (text, hintText) => {
+    const h = document.createElement("div");
+    h.className = "subhead";
+    h.textContent = text;
+    box.appendChild(h);
+    if (hintText) {
+      const x = document.createElement("div");
+      x.className = "hint";
+      x.textContent = hintText;
+      box.appendChild(x);
+    }
+  };
+  const comma = n => String(n).replace(".", ",");
 
   if (S.capLevel < CAPACITY.length - 1) {
     const next = CAPACITY[S.capLevel + 1];
@@ -1639,10 +1766,48 @@ function renderUpgrades() {
       logMessage(`🏃 Najal jsi kurýra. Od zítřka máš směnu o hodinu delší (provoz ${fmt(runnerUpkeep())} Kč/den).`);
     });
   }
-  if (S.lawyer && S.runners >= RUNNERS.length && S.capLevel >= CAPACITY.length - 1) {
-    const d = document.createElement("div");
-    d.textContent = "Všechno vylepšeno.";
-    box.appendChild(d);
+  // --- policejní kontakty: pasivní snižování heatu ---
+  const cur = S.contact ? CONTACTS[S.contact - 1] : null;
+  heading("🤝 Policejní kontakty", cur
+    ? `Máš: ${cur.name} – heat −${comma(cur.cool)} denně ve všech čtvrtích, provoz ${fmt(cur.upkeep)} Kč/den.`
+    : "Pasivně snižují heat ve všech čtvrtích každý den za denní provoz. Nemusíš pořád kupovat SIM a holiče.");
+  if (S.contact < CONTACTS.length) {
+    const c = CONTACTS[S.contact];
+    add(`🤝 ${c.name}`, c.price, `Heat −${comma(c.cool)} denně ve všech čtvrtích, provoz ${fmt(c.upkeep)} Kč/den. Nahradí předchozího.`, () => {
+      S.contact++;
+      logMessage(`🤝 Nový kontakt: ${c.name}. Heat bude klesat o ${comma(c.cool)} denně (provoz ${fmt(c.upkeep)} Kč/den).`);
+    });
+  }
+
+  // --- prodejci ve čtvrtích ---
+  heading("🧑‍💼 Prodejci", `Prodávají za tebe část poptávky ve své čtvrti z tvého stashe (asi ${fmt(DEALER.pricePerG)} Kč/g), ale zvedají heat. Když je policie moc blízko, mohou skončit v poutech.`);
+  districtNames.forEach(d => {
+    const lvl = S.dealers[d] || 0;
+    const row = document.createElement("div");
+    row.className = "row dealer-row";
+    const label = document.createElement("span");
+    label.className = "row-label";
+    label.textContent = `${d}: ${lvl === 0 ? "nikdo" : lvl === 1 ? "prodejce" : "tým prodejců"} `;
+    row.appendChild(label);
+    if (lvl === 0) {
+      add("Najmout", DEALER.hire, `Prodá ve čtvrti denně asi ${Math.floor(1 + S.pop[d] * 0.7)} g, provoz ${fmt(DEALER.upkeep)} Kč/den.`, () => {
+        S.dealers[d] = 1;
+        logMessage(`🧑‍💼 Najal jsi prodejce v ${d} (provoz ${fmt(DEALER.upkeep)} Kč/den).`);
+      }, row);
+    } else if (lvl === 1) {
+      add("Posílit na tým", DEALER.upgrade, `Dvojnásobný prodej, provoz ${fmt(DEALER.upkeep2)} Kč/den.`, () => {
+        S.dealers[d] = 2;
+        logMessage(`🧑‍💼 V ${d} máš teď tým prodejců (provoz ${fmt(DEALER.upkeep2)} Kč/den).`);
+      }, row);
+    }
+    box.appendChild(row);
+  });
+
+  // --- nové čtvrti ---
+  const locked = Object.keys(EXTRA_DISTRICTS).filter(d => !S.unlocked.includes(d));
+  if (locked.length) {
+    heading("🗺️ Nové čtvrti", "Kontakty v další čtvrti: odtamtud ti začnou psát noví zákazníci.");
+    locked.forEach(d => add(`🗺️ ${d}`, EXTRA_DISTRICTS[d], `Odemkne čtvrť ${d} na mapě.`, () => unlockDistrict(d)));
   }
 }
 
@@ -1705,7 +1870,7 @@ function renderSecurity() {
    ===================================================================== */
 /* ---------- mapa se stavem čtvrtí ---------- */
 const MAP_W = 440, MAP_H = 430;
-const MAP_BOUNDS = { x0: -3.8, x1: 3.3, y0: -7.6, y1: 4.6 };
+const MAP_BOUNDS = { x0: -4.5, x1: 4.4, y0: -7.6, y1: 5.5 };
 function mapPoint(p) {
   return {
     x: 125 + (p.x - MAP_BOUNDS.x0) / (MAP_BOUNDS.x1 - MAP_BOUNDS.x0) * 190,
@@ -1751,7 +1916,7 @@ function renderMap() {
   $("mapWhere").textContent = S.loc === "home" ? "· jsi doma" : `· jsi v ${S.loc}`;
 
   // Vltava jako dekorace: od severu mezi Letnou a Holešovicemi dolů na jih
-  const rv = [{ x: 1.3, y: 4.6 }, { x: 0.0, y: 3.0 }, { x: -0.6, y: 0.8 }, { x: -0.3, y: -1.6 }, { x: 0.1, y: -4.2 }, { x: 0.3, y: -6.2 }, { x: -0.2, y: -7.6 }].map(mapPoint);
+  const rv = [{ x: 1.3, y: 5.5 }, { x: 0.0, y: 3.0 }, { x: -0.6, y: 0.8 }, { x: -0.3, y: -1.6 }, { x: 0.1, y: -4.2 }, { x: 0.3, y: -6.2 }, { x: -0.2, y: -7.6 }].map(mapPoint);
   const river = `M${rv[0].x},${rv[0].y} C${rv[1].x},${rv[1].y} ${rv[2].x},${rv[2].y} ${rv[3].x},${rv[3].y} S${rv[5].x},${rv[5].y} ${rv[6].x},${rv[6].y}`;
 
   const R = 16;
@@ -1792,6 +1957,18 @@ function renderMap() {
       <text x="${lx}" y="${p.y + 15.5}" class="node-sub" text-anchor="${anchor}" fill="${col}">🚨 ${hp} %</text>
       ${eta !== null ? `<text x="${lx}" y="${p.y + 26}" class="node-eta" text-anchor="${anchor}">🕘 ${clockAt(eta)} · ${fmtDur(eta)}</text>` : ""}
       ${open[d] ? `<circle cx="${p.x}" cy="${p.y}" r="8.5" class="badge-c"/><text x="${p.x}" y="${p.y + 3.8}" class="badge-t">${open[d]}</text>` : ""}
+    </g>`;
+  });
+  // zamčené čtvrti jako stín: ukazují, kam se dá rozšířit
+  Object.keys(EXTRA_DISTRICTS).filter(d => !S.unlocked.includes(d)).forEach(d => {
+    const dd = districts[d], p = mapPoint(dd), right = dd.side === "right";
+    const lx = right ? p.x + 24 : p.x - 24, anchor = right ? "start" : "end";
+    nodes += `<g class="node locked">
+      <title>${d} – odemkni v záložce Zázemí (${fmt(EXTRA_DISTRICTS[d])} Kč)</title>
+      <circle cx="${p.x}" cy="${p.y}" r="14" class="ghost"/>
+      <text x="${p.x}" y="${p.y + 4}" class="core-i" text-anchor="middle">🔒</text>
+      <text x="${lx}" y="${p.y - 2}" class="node-label dim" text-anchor="${anchor}">${d}</text>
+      <text x="${lx}" y="${p.y + 10}" class="node-sub" text-anchor="${anchor}" fill="#7d8e9f">${fmt(EXTRA_DISTRICTS[d])} Kč</text>
     </g>`;
   });
   const hp = mapPoint(HOME);
@@ -2008,6 +2185,7 @@ function advanceDay() {
   S.boughtToday = false;
   S.loc = "home";   // ráno vyrážíš z bytu
   S.offered = {};
+  S.vipToday = 0;
   districtNames.forEach(d => { S.freq[d] = 0; });
   S.timeLeft = shiftLen();
 
@@ -2030,6 +2208,7 @@ function advanceDay() {
   }
 
   processPending();
+  processStaff();
 
   // provoz kurýrů
   if (S.runners > 0) {
@@ -2095,6 +2274,7 @@ function resetUi() {
 function startNewGame() {
   clearSave();
   S = newState();
+  syncDistricts();
   refreshSuppliers();
   resetUi();
   $("introScreen").style.display = "none";
@@ -2115,6 +2295,7 @@ function continueGame() {
   const loaded = loadGame();
   if (!loaded) { startNewGame(); return; }
   S = loaded;
+  syncDistricts();
   resetUi();
   $("introScreen").style.display = "none";
   playBackgroundMusic();
@@ -2160,7 +2341,9 @@ function init() {
     if (missing.length) return;
   }
   $("versionTag").textContent = "v" + VERSION;
+  $("versionTag").title = "sestavení " + BUILD;
   S = newState();           // jen aby se dalo vykreslit UI za úvodní obrazovkou
+  syncDistricts();
   refreshSuppliers();
   updateStatus();
   logMessage(`💬 Vítej v Sněhovém Dealerovi – verze ${VERSION}`);

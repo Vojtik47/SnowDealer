@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sněhový Dealer</title>
-  <meta name="build" content="2026-10-06.1" />
+  <meta name="build" content="2026-10-06.4" />
   <style>
     :root {
       --bg: #0b141e;
@@ -277,6 +277,12 @@
     .map-svg .node-label { fill: #e8eff6; font-size: 11px; font-weight: 700; pointer-events: none; }
     .map-svg .node-sub { font-size: 9.5px; pointer-events: none; font-variant-numeric: tabular-nums; }
     .map-svg .disc { fill: #101c27; }
+    .map-svg .ghost { fill: #0f1923; stroke: #3a5671; stroke-width: 1.5; stroke-dasharray: 3 3; }
+    .map-svg .node-label.dim { fill: #8a99a9; font-weight: 600; }
+    .map-svg .node.locked { opacity: 0.8; }
+    .tab-panel .subhead { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-weight: 700; }
+    .dealer-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+    .dealer-row .row-label { min-width: 150px; }
     .map-svg .arc-bg { fill: none; stroke: #223445; stroke-width: 5; stroke-linecap: round; }
     .map-svg .arc { fill: none; stroke-width: 5; stroke-linecap: round; transition: stroke 0.6s; }
     .map-svg .arc.pop { stroke: #4da3ff; }
@@ -448,6 +454,7 @@
           <li>📦 Dodavatelé jsou jen v pondělí a nabídky platí jen ten den – nakup zásoby na celý týden! Mají různé ceny i spolehlivost. Když je přeskočíš, hra se tě před koncem dne zeptá. Kapacita stashe je omezená, vylepši zázemí</li>
           <li>🎲 Náhodné eventy mají důsledky – někdy až za pár dní (lichvář, dluhy). Některé jsou na čas: když nestihneš odpovědět, rozhodne se za tebe</li>
           <li>🏚️ Každých 30 dní platíš nájem. Roste pomalu, jednou za 2 měsíce. Nezaplacený nájem se mění v dluh</li>
+          <li>🚀 <b>Pozdní hra:</b> známá čtvrť platí víc (popularita 5 = +24 %) a občas napíše velkoodběratel (klub, hotel) – 10 až 50 g za 2 700 až 3 200 Kč/g. V záložce Zázemí můžeš najmout <b>prodejce</b> ve čtvrtích (prodávají z tvého stashe, ale zvedají heat), koupit <b>policejní kontakty</b> (pasivně snižují heat) a odemknout <b>nové čtvrti</b></li>
           <li>💾 Hra se ukládá na začátku každého dne</li>
         </ul>
       </div>
@@ -487,6 +494,6 @@
       });
     })();
   </script>
-  <script src="GameLogic.js?b=2026-10-06.1"></script>
+  <script src="GameLogic.js?b=2026-10-06.4"></script>
 </body>
 </html>
