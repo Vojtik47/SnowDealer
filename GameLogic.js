@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.4
+// Sněhový Dealer – verze 5.6
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.4";
-const BUILD = "2026-10-06.4";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.6";
+const BUILD = "2026-10-06.6";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -124,7 +124,20 @@ const CONTACTS = [
   { name: "Náměstek policejního ředitele", price: 400000, upkeep: 8000, cool: 0.50 }
 ];
 // Prodejci: sami prodávají část poptávky ve své čtvrti (z tvého stashe), ale přidávají heat
-const DEALER = { hire: 25000, upkeep: 800, upgrade: 60000, upkeep2: 2000, pricePerG: 2000, heatPerG: 0.06 };
+const DEALER = { hire: 25000, upkeep: 800, upgrade: 60000, upkeep2: 2000, pricePerG: 2000, heatPerG: 0.06, upgradeUpkeep: 150 };
+// Vylepšení každého prodejce zvlášť: lepší cena za gram a opatrnost (méně heatu a menší šance na zatčení)
+const DEALER_PRICE_LVLS = [
+  { cost: 40000, bonus: 0.15 }, { cost: 80000, bonus: 0.30 }, { cost: 150000, bonus: 0.50 }
+];
+const DEALER_STEALTH_LVLS = [
+  { cost: 40000, heat: 0.75, arrest: 0.07 }, { cost: 90000, heat: 0.50, arrest: 0.04 }, { cost: 180000, heat: 0.30, arrest: 0.02 }
+];
+// Bezpečný režim: prodejci se stáhnou, když je ve čtvrti policie nad touto hranicí (heat 3,5 = zátah)
+const DEALER_SAFETY = [
+  { label: "vypnuto", heat: null },
+  { label: "při 70 % policie", heat: 2.45 },
+  { label: "při 85 % policie", heat: 2.975 }
+];
 
 const ACHIEVEMENTS = {
   first: { name: "První kontakt", desc: "Doruč první objednávku" },
@@ -174,7 +187,29 @@ const randomCustomerMessages = [
   "Jdu do Atíku, budeš mít čas kolem 7? Ráno?",
   "Hm, tak jsem bez papíru, bro, včera jsem lízl opiáty",
   "Nevíš o někom, kdo by uměl zařídit kouli?",
-  "Si zvanej na moje narozky, bro"
+  "Si zvanej na moje narozky, bro",
+  "ahoj, tady Honza z minule. ne, nejsem Honza, spatny cislo, ale ty ses mi libil",
+  "mas tip na dobrou pizzu v okoli? nejde o pizzu, jen se ptam",
+  "bro videl jsem dneska holuba co mel lepsi bundu nez ja",
+  "potkal jsem tvoji tramvaj. pozdravila me",
+  "co delas? ja nic a jde mi to skvele",
+  "nechces jit zitra na raftovani? ptam se vsech v kontaktech",
+  "prosim te nauc me jak se rika ne sefovi na porade",
+  "poslal jsem ti omylem fotku mojeho psa. je to dobrej pes.",
+  "ty ses ten co ma ten telefon s prasklym displejem? to ne ja jsem to byl. nebo ty?",
+  "dneska jsem poprve v zivote zaplatil kartou za kebab a cejtim se jako CEO",
+  "hele mas nabijecku na iphone? nepotrebuju ji, jen kamosi",
+  "zitra rano mam pohovor, drz mi palce. nebo aspon palec",
+  "klidne mi nepis, ja si jen povidam sam se sebou, ale diky ze ctes",
+  "co se stalo s nasim kamosem Pavlem? je nekde na Slovensku a prodava hrnky",
+  "v kolik zavira Billa? nebo uz jsem tam byl?",
+  "bro, rekli mi ze jsem moc mluvil na schuzce. koho mam obvinit, kafe?",
+  "prisel jsem na to ze v pondeli se nerika dobry den, ale nejak to dopadne",
+  "mam novou frizuru, nikdo si ji nevsiml. pises mi ze je dobra? diky.",
+  "naucil jsem se rozlisit tramvaj 22 od tramvaje 9, jsem vlastne spojar",
+  "mel bych dotaz, ale uz si nepamatuju jaky. mozna otazka byla jak se mas",
+  "dneska jsem se 3x ztratil v metru a dvakrat v obchaku, pomaha ti nekdy gps?",
+  "vsiml sis ze ahoj je vlastne zkraceny ahojte? dovolil jsem si to zkontrolovat"
 ];
 
 /* =====================================================================
@@ -216,7 +251,7 @@ function newState() {
     lastHaircutDay: null, secUsed: false, carDown: false,
     lastEventDay: 0, lastQuickDay: 0, recentEvents: [],
     loc: "home", offered: {}, boughtToday: false,
-    contact: 0, dealers: {}, unlocked: [], vipToday: 0,
+    contact: 0, dealers: {}, dealerSafety: 2, unlocked: [], vipToday: 0,
     market: 1, supplierOffers: [], pending: [], seq: 0,
     pop: {}, police: {}, warned: {}, idle: {}, freq: {},
     accepted: {}, loyalty: {}, usedToday: [], salesToday: false,
@@ -817,7 +852,43 @@ function generateOffer() {
     `kolega rikal ze mas ${grams}g na sklade, ja mam ${price}kc a na sklade nic, vymenime?`,
     `tvoje auto je na ${district} vsude videt, takze ${grams}g za ${price}kc bude easy ne`,
     `vole zrovna mi zdrazili najem, ${grams}g za ${price}kc at to prezijem`,
-    `ahojky, ${grams}g do ${district} a ${price}kc, jinak budu muset jit spat v 10 jak sasek`
+    `ahojky, ${grams}g do ${district} a ${price}kc, jinak budu muset jit spat v 10 jak sasek`,
+    `ahoj, tohle neni podvod ani past, jen ${grams}g za ${price}kc, dik`,
+    `kamo mam ${price}kc a plan co nema smysl, ${grams}g by ho zachranilo`,
+    `dobry den, objednavam ${grams}g na firemni teambuilding, rozpocet ${price} Kc, tema: snih`,
+    `tati rikal ze mam hledat praci, tak hledam: ${grams}g, ${price}kc, ${district}`,
+    `yo, potrebuju ${grams}g na vcerejsi chyby, mam ${price}kc`,
+    `zdar, ucim se na zkousku a potrebuju k tomu ${grams}g, ${price}kc, bez diskuze`,
+    `hele ${grams}g do ${district}, ${price}kc, a kdyz to bude rychle tak mas u me pivo`,
+    `pomoc, babicka prijizdi za hodinu a nic nemam doma: ${grams}g, ${price}kc, ${district}`,
+    `dobry vecer, prosim ${grams}g, ${price} Kc, uhrazeno v hotovosti a s usmevem`,
+    `bro nejsem hrdy ale ${grams}g za ${price}kc je dneska moje jedina jistota`,
+    `mel jsem tezky tyden. ${grams}g, ${price}kc, ${district}. nechces si povidat? ne? ok`,
+    `vol mi, pis mi, jen mi dones ${grams}g do ${district}, ${price}kc cash`,
+    `brasko ty jsi hrdina nasi doby. ${grams}g, ${price}kc, a hrdinum se neodmita`,
+    `tahle zprava se po precteni nezničí, ale ${grams}g za ${price}kc je realna`,
+    `ahoj, jsem z ${district}, mam rozpocet ${price}kc a velke ambice na ${grams}g`,
+    `dneska mi koncilo kolo na lavicce, ty mi ho vynahradis: ${grams}g, ${price}kc`,
+    `pls pls pls ${grams}g, ${price}kc, mam rande a chci byt v dobre forme`,
+    `zdarec, delam inventuru v hlave: ${grams}g, ${price}kc, ${district}. mas na sklade?`,
+    `kamo, kdyz mi doneses ${grams}g do ${district} do pulhodiny, napisu ti basen. ${price}kc`,
+    `dobry den, hledam ${grams}g za ${price} Kc, nabizim tez nepovinny usmev`,
+    `ty vole, moje kocka tvrdi ze potrebuju ${grams}g. ${price}kc. neposlouchat kocku je nezdrave`,
+    `heyyy, ${grams}g za ${price}kc pls, jsem uz u ${district} a mam kabat naruby`,
+    `${price}kc za ${grams}g je moje maximum, neprecenuj me`,
+    `dneska jsem velmi smutny a velmi bohaty. ${grams}g, ${price}kc, ${district}`,
+    `zdar, mam kupon ktery plati jen dnes: ${price}kc za ${grams}g, doufam ze sedi`,
+    `kamo vim ze to neni legalni, ale ${grams}g za ${price}kc by mi dneska zachranilo den`,
+    `mel jsem sen ze nosis ${grams}g a mel jsem pravdu. ${price}kc, ${district}`,
+    `prosim te, uz jsem mluvil i s hlasem v hlave: ${grams}g, ${price}kc, a on souhlasi`,
+    `bez ${grams}g jsem uplne bezradnej jako kocka v dest. ${price}kc, ${district}`,
+    `zdarec, ja jsem ten co ti vcera psal ze nema ${price}kc. dneska je mam, ${grams}g!`,
+    `Dobry den, zadavam objednavku c. 47: ${grams}g za ${price} Kc. Dekujeme za duveru a diskretnost.`,
+    `ty jsi ta jedina ruzova pastelka v krabici. ${grams}g, ${price}kc, ${district}`,
+    `mam hlad ale radsi ${grams}g nez rizek, ${price}kc, a kdyz stihnes tak ten rizek taky`,
+    `kamo, volal jsem mamce a ona rekla at si objednam ${grams}g. ${price}kc, ${district}`,
+    `ten ficak z konkurence mi rikal ze maji akci, ale ja verim tobe. ${grams}g, ${price}kc`,
+    `hele nic neodpovidej, jen prijed s ${grams}g do ${district}. ${price}kc, bez keců i bez bankovnich prevodu`
   ];
   // velkoodběratelé píšou formálněji (a trochu vtipněji)
   const vipMessages = [
@@ -835,7 +906,22 @@ function generateOffer() {
     `bez tebe bych tu Prahu nezvladl, ${grams}g za ${price}kc pls`,
     `jako minule pls, ${grams}g a ${price}kc, ty vis kam v ${district}`,
     `šéfe, poprosil bych klasiku. ${grams}g, ${price}kc, ${district}`,
-    `ty jsi muj nejlepsi dealer a to rikam i mamce. ${grams}g za ${price}kc`
+    `ty jsi muj nejlepsi dealer a to rikam i mamce. ${grams}g za ${price}kc`,
+    `tvuj stalej tady, ${grams}g jako vzdy, ${price}kc, a pozdravuj mamku`,
+    `mas me v kontaktech pod "ten dobrej"? tak ${grams}g, ${price}kc`,
+    `klasika, ${grams}g do ${district}, ${price}kc. a pripadne kafe, kdyby se nahodou`,
+    `uz je to tradice: ${grams}g, ${price}kc, a ja ti nikdy nerikam cim jsem`,
+    `bez ${grams}g neprezijem ani pondeli. ${price}kc ready, ty to znas`,
+    `boss, ${grams}g, ${price}kc, tvuj nejvernejsi zakaznik v ${district}. diplom?`,
+    `kdyz uz mam tvoje cislo tak ${grams}g, ne? ${price}kc, a tentokrat bez drbu`,
+    `stejne jako minule pls, ${grams}g, ${price}kc. nebo jako predminule, nepamatuju si`,
+    `hele pro tebe rad, tvuj verny zakaznik tady, ${grams}g za ${price}kc`,
+    `ty vis jak to mam rad. ${grams}g do ${district}, ${price}kc`,
+    `recenzi ti dam nejak potom, ted ${grams}g za ${price}kc, jo?`,
+    `jsem stalejsi nez tvuj sasek z konkurence. ${grams}g, ${price}kc`,
+    `prosim te, ${grams}g, ${price}kc, a kdyz to bude sedet tak ti napisu zase zitra`,
+    `snih je moje hobby, ty jsi muj dodavatel pomoci. ${grams}g, ${price}kc, ${district}`,
+    `to jsem zase ja, nejsem zadna policie, jen ${grams}g za ${price}kc chci`
   ];
 
   const offer = { nickname, district, grams, price, time, trap, vip };
@@ -1492,32 +1578,49 @@ function processStaff() {
   processDealers();
 }
 
+// každý prodejce má tým (1/2), úroveň ceny a opatrnosti a možnost pozastavení; staré uložené hry mají jen číslo
+function dealerInfo(d) {
+  const x = S.dealers[d];
+  if (typeof x === "number") S.dealers[d] = { team: x, price: 0, stealth: 0, paused: false };
+  return S.dealers[d];
+}
+const dealerUpkeep = dd => (dd.team === 2 ? DEALER.upkeep2 : DEALER.upkeep) + DEALER.upgradeUpkeep * (dd.price + dd.stealth);
+
+// Prodejci NIKDY nezpůsobí zátah na tebe: heat ve čtvrti zvednou nejvýš na 3,4 (zátah je až při 3,5).
+// Zatčen může být jen prodejce (ztrácíš ho). Pozastavení a bezpečný režim ho ale před tím stáhnou.
 function processDealers() {
   const ds = Object.keys(S.dealers).filter(d => districtNames.includes(d));
   if (!ds.length) return;
+  const safety = DEALER_SAFETY[S.dealerSafety] || DEALER_SAFETY[0];
   let sold = 0, income = 0, cost = 0;
-  const arrested = [], quit = [];
+  const arrested = [], quit = [], withdrawn = [];
   ds.forEach(d => {
-    const lvl = S.dealers[d];
-    const upkeep = lvl === 2 ? DEALER.upkeep2 : DEALER.upkeep;
+    const dd = dealerInfo(d);
+    const hidden = dd.paused || (safety.heat !== null && S.police[d] >= safety.heat);
+    // stažený nebo pozastavený prodejce dostává jen poloviční výplatu (čeká)
+    const upkeep = Math.round(dealerUpkeep(dd) / (hidden ? 2 : 1));
     if (S.money < upkeep) { delete S.dealers[d]; quit.push(d); return; }
     S.money -= upkeep; cost += upkeep;
-    // prodejce ve čtvrti, kde je policie moc blízko, může skončit v poutech
-    if (S.police[d] >= 3 && Math.random() < 0.10) { delete S.dealers[d]; arrested.push(d); return; }
-    const g = Math.min(Math.floor(1 + S.pop[d] * 0.7) * lvl, S.supply);
+    if (hidden) { if (!dd.paused) withdrawn.push(d); return; }
+    // prodejce ve čtvrti, kde je policie moc blízko, může skončit v poutech (opatrnost šanci snižuje)
+    const arrestRate = dd.stealth ? DEALER_STEALTH_LVLS[dd.stealth - 1].arrest : 0.10;
+    if (S.police[d] >= 3 && Math.random() < arrestRate) { delete S.dealers[d]; arrested.push(d); return; }
+    const g = Math.min(Math.floor(1 + S.pop[d] * 0.7) * dd.team, S.supply);
     if (g <= 0) return;
-    const price = Math.round(DEALER.pricePerG * (1 + 0.06 * Math.max(0, S.pop[d] - 1)) / 100) * 100;
+    const bonus = dd.price ? DEALER_PRICE_LVLS[dd.price - 1].bonus : 0;
+    const price = Math.round(DEALER.pricePerG * (1 + 0.06 * Math.max(0, S.pop[d] - 1)) * (1 + bonus) / 100) * 100;
+    const heatMult = dd.stealth ? DEALER_STEALTH_LVLS[dd.stealth - 1].heat : 1;
     S.supply -= g; S.money += g * price; sold += g; income += g * price;
     S.stats.earned += g * price; S.stats.grams += g;
-    S.police[d] = Math.min(3.4, S.police[d] + DEALER.heatPerG * g);
+    S.police[d] = Math.min(3.4, S.police[d] + DEALER.heatPerG * heatMult * g);
     S.idle[d] = 0;   // prodejce drží čtvrť „živou“, popularita neklesá
     checkHeat(d);
   });
   logMessage(`🧑‍💼 Prodejci: ${sold} g prodáno, +${fmt(income)} Kč, výplaty −${fmt(cost)} Kč.`);
+  withdrawn.forEach(d => logMessage(`🕶️ Prodejce v ${d} se stáhl – policie je moc blízko. Čeká, až se to uklidní.`));
   arrested.forEach(d => logImportantMessage(`🚔 Tvého prodejce v ${d} zatkli. Policie tam byla moc blízko.`));
   quit.forEach(d => logImportantMessage(`🧑‍💼 Prodejce v ${d} odešel – nemáš na výplatu.`));
 }
-
 // odemknutí nové čtvrti
 function unlockDistrict(d) {
   if (S.over || S.unlocked.includes(d) || !EXTRA_DISTRICTS[d]) return;
@@ -1780,29 +1883,79 @@ function renderUpgrades() {
   }
 
   // --- prodejci ve čtvrtích ---
-  heading("🧑‍💼 Prodejci", `Prodávají za tebe část poptávky ve své čtvrti z tvého stashe (asi ${fmt(DEALER.pricePerG)} Kč/g), ale zvedají heat. Když je policie moc blízko, mohou skončit v poutech.`);
+  heading("🧑‍💼 Prodejci", `Prodávají za tebe část poptávky ve své čtvrti z tvého stashe (asi ${fmt(DEALER.pricePerG)} Kč/g), ale zvedají heat. Na tebe zátah nikdy nepřivolají (heat zvednou nejvýš těsně pod zátah), ale prodejce může skončit v poutech.`);
+  // bezpečný režim: prodejci se při vysoké policii stáhnou
+  const safetyRow = document.createElement("div");
+  safetyRow.className = "row dealer-row";
+  const sb = document.createElement("button");
+  sb.className = "btn";
+  sb.textContent = `🛡️ Bezpečný režim: ${DEALER_SAFETY[S.dealerSafety].label}`;
+  sb.title = "Když je ve čtvrti policie nad touto hranicí, prodejce se stáhne (neprodává, nezvedá heat, dostává polovinu výplaty). Klikni pro změnu.";
+  sb.onclick = () => { S.dealerSafety = (S.dealerSafety + 1) % DEALER_SAFETY.length; updateStatus(); };
+  safetyRow.appendChild(sb);
+  box.appendChild(safetyRow);
+
+  // tlačítko bez ceny (pozastavení, propuštění)
+  const act = (text, tooltip, fn, parent) => {
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = text;
+    b.title = tooltip;
+    b.onclick = () => { if (!S.over) fn(); };
+    parent.appendChild(b);
+  };
+
   districtNames.forEach(d => {
-    const lvl = S.dealers[d] || 0;
+    const dd = S.dealers[d] ? dealerInfo(d) : null;
     const row = document.createElement("div");
     row.className = "row dealer-row";
     const label = document.createElement("span");
     label.className = "row-label";
-    label.textContent = `${d}: ${lvl === 0 ? "nikdo" : lvl === 1 ? "prodejce" : "tým prodejců"} `;
-    row.appendChild(label);
-    if (lvl === 0) {
+    if (!dd) {
+      label.textContent = `${d}: nikdo `;
+      row.appendChild(label);
       add("Najmout", DEALER.hire, `Prodá ve čtvrti denně asi ${Math.floor(1 + S.pop[d] * 0.7)} g, provoz ${fmt(DEALER.upkeep)} Kč/den.`, () => {
-        S.dealers[d] = 1;
+        S.dealers[d] = { team: 1, price: 0, stealth: 0, paused: false };
         logMessage(`🧑‍💼 Najal jsi prodejce v ${d} (provoz ${fmt(DEALER.upkeep)} Kč/den).`);
       }, row);
-    } else if (lvl === 1) {
+      box.appendChild(row);
+      return;
+    }
+    const safety = DEALER_SAFETY[S.dealerSafety];
+    const hidden = !dd.paused && safety.heat !== null && S.police[d] >= safety.heat;
+    const bonus = dd.price ? `+${Math.round(DEALER_PRICE_LVLS[dd.price - 1].bonus * 100)} % cena` : "základní cena";
+    const heat = dd.stealth ? `−${Math.round((1 - DEALER_STEALTH_LVLS[dd.stealth - 1].heat) * 100)} % heat` : "běžný heat";
+    label.textContent = `${d}: ${dd.team === 2 ? "tým" : "prodejce"} · ${bonus} · ${heat}${dd.paused ? " · ⏸️ pozastaven" : hidden ? " · 🕶️ stažený" : ""} `;
+    row.appendChild(label);
+    if (dd.team === 1) {
       add("Posílit na tým", DEALER.upgrade, `Dvojnásobný prodej, provoz ${fmt(DEALER.upkeep2)} Kč/den.`, () => {
-        S.dealers[d] = 2;
-        logMessage(`🧑‍💼 V ${d} máš teď tým prodejců (provoz ${fmt(DEALER.upkeep2)} Kč/den).`);
+        dd.team = 2;
+        logMessage(`🧑‍💼 V ${d} máš teď tým prodejců.`);
       }, row);
     }
+    if (dd.price < DEALER_PRICE_LVLS.length) {
+      const u = DEALER_PRICE_LVLS[dd.price];
+      add(`💰 Cena +${Math.round(u.bonus * 100)} %`, u.cost, `Prodává za ${Math.round(u.bonus * 100)} % víc. Provoz +${fmt(DEALER.upgradeUpkeep)} Kč/den.`, () => {
+        dd.price++;
+        logMessage(`💰 Prodejce v ${d} vyjednal lepší ceny (+${Math.round(u.bonus * 100)} %).`);
+      }, row);
+    }
+    if (dd.stealth < DEALER_STEALTH_LVLS.length) {
+      const u = DEALER_STEALTH_LVLS[dd.stealth];
+      add(`🕶️ Opatrnost −${Math.round((1 - u.heat) * 100)} % heat`, u.cost, `Zvedá heat o ${Math.round((1 - u.heat) * 100)} % méně a šance na zatčení klesne na ${Math.round(u.arrest * 100)} %. Provoz +${fmt(DEALER.upgradeUpkeep)} Kč/den.`, () => {
+        dd.stealth++;
+        logMessage(`🕶️ Prodejce v ${d} je opatrnější (−${Math.round((1 - u.heat) * 100)} % heat).`);
+      }, row);
+    }
+    act(dd.paused ? "▶️ Obnovit" : "⏸️ Pozastavit", dd.paused ? "Prodejce zase začne prodávat." : "Prodejce nic neprodává a nezvedá heat, dostává polovinu výplaty.", () => {
+      dd.paused = !dd.paused;
+      updateStatus();
+    }, row);
+    act("✖ Propustit", "Prodejce odejde. Vylepšení se ztratí.", () => {
+      askConfirm(`Opravdu propustit prodejce v ${d}? Přijdeš o jeho vylepšení.`, "Propustit", "Ne", () => { delete S.dealers[d]; logMessage(`🧑‍💼 Prodejce v ${d} jsi propustil.`); updateStatus(); }, () => {});
+    }, row);
     box.appendChild(row);
   });
-
   // --- nové čtvrti ---
   const locked = Object.keys(EXTRA_DISTRICTS).filter(d => !S.unlocked.includes(d));
   if (locked.length) {
@@ -2296,6 +2449,7 @@ function continueGame() {
   if (!loaded) { startNewGame(); return; }
   S = loaded;
   syncDistricts();
+  Object.keys(S.dealers || {}).forEach(dealerInfo);   // staré uložení: prodejce byl jen číslo
   resetUi();
   $("introScreen").style.display = "none";
   playBackgroundMusic();

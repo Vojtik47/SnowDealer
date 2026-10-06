@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sněhový Dealer</title>
+  <style>
+    @keyframes policeFlashing {
+      0% { background-color: #0011ff; }
+      50% { background-color: #ff0000; }
+      100% { background-color: #0011ff; }
+    }
+    .police-flash {
+      animation: policeFlashing 0.3s infinite;
+    }
+    body {
+      font-family: monospace;
+      background: #111;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    h1 {
+      margin-top: 0;
+    }
+    .info-box {
+      font-size: 1.3rem;
+      font-weight: bold;
+      color: #ffffff;
+      background: #222;
+      padding: 8px 12px;
+      margin: 5px 0;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+    .btn {
+  background-color: #444;
+  color: #fff;
+  border: 1px solid #666;
+  padding: 8px 12px;
+  margin: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.3s ease;
+}
+
+.btn:hover {
+  background-color: #555;
+}
+    .btn:hover {
+      background: #333;
+      color: #fff;
+    }
+.btn-disabled {
+      background-color: #333;
+      color: #777;
+      cursor: not-allowed;
+    }
+    .two-columns {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+      align-items: flex-start;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    .left-panel, .right-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .left-panel {
+      flex: 2;
+      min-width: 500px;
+    }
+    .right-panel {
+      flex: 1;
+      min-width: 300px;
+    }
+    .panel-box {
+      background-color: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.5);
+    }
+    #districtTableContainer table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      color: white;
+    }
+    #districtTableContainer th,
+    #districtTableContainer td {
+      padding: 6px 8px;
+      text-align: left;
+    }
+    #districtTableContainer th {
+      border-bottom: 1px solid #444;
+      color: #ccc;
+      font-weight: bold;
+    }
+    #districtTableContainer td {
+      border-bottom: 1px solid #222;
+    }
+    #gameLog, #telegramFeed {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    #gameLog {
+      min-width: 550px;
+    }
+    #telegramMessages {
+      margin-top: 10px;
+    }
+    #securityRow, #carOptions {
+      margin: 10px 0;
+    }
+    #introScreen {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #111; color: #fff;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      z-index: 9999;
+      padding: 40px; text-align: center;
+    }
+    .intro-text {
+      max-width: 600px;
+      font-size: 1.1rem;
+      margin-bottom: 30px;
+    }
+    .intro-buttons {
+      margin-bottom: 20px;
+    }
+    #howToPlay {
+      display: none;
+      font-size: 0.95rem;
+      max-width: 600px;
+      text-align: left;
+    }
+    #musicToggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+    }
+    #toggleMusic {
+      padding: 10px 20px;
+      background-color: #0055ff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #toggleMusic:hover {
+      background-color: #0033aa;
+    }
+    .tooltip {
+      position: relative;
+      display: inline-block;
+      cursor: pointer;
+    }
+
+    .tooltip .tooltip-text {
+      visibility: hidden;
+      width: 200px;
+      background-color: #333;
+      color: #fff;
+      text-align: center;
+      border-radius: 5px;
+      padding: 5px;
+      position: absolute;
+      z-index: 1;
+      bottom: 125%; /* Position above the element */
+      left: 50%;
+      transform: translateX(-50%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .tooltip:hover .tooltip-text {
+      visibility: visible;
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <h1>❄️ Sněhový Dealer</h1>
+  <div class="two-columns">
+    <div class="left-panel">
+      <div id="status" class="info-box"></div>
+      <div id="carInfo" class="info-box"></div>
+      <div>
+<div id="securityRow"></div>
+      
+      </div>
+      <div id="carOptions">
+        <strong>🚗 Auta</strong>
+        <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 5px;">
+          Zkracuje rychlost doručení a přidává popularitu.
+        </div>
+        <div class="tooltip">
+          🚗 Auto 1
+          <span class="tooltip-text">Levné auto, pomalé doručení. Popularita: nízká.</span>
+        </div>
+        <div class="tooltip">
+          🚙 Auto 2
+          <span class="tooltip-text">Střední třída, vyvážená rychlost doručení a popularita.</span>
+        </div>
+        <div class="tooltip">
+          🚓 Auto 3
+          <span class="tooltip-text">Rychlé doručení, vysoká popularita. Cena: vysoká.</span>
+        </div>
+      </div>
+      <div id="gameLog" class="panel-box"></div>
+      <button class="btn" onclick="nextDay()">➡️ Další den</button>
+    </div>
+    <div class="right-panel">
+      <div id="districtTableContainer" class="panel-box"></div>
+      <div id="telegramFeed" class="panel-box">
+        <strong>📢 Telegram feed</strong>
+        <div id="telegramMessages"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zvuky -->
+  <audio id="notif" src="sounds/discord_ping.mp3" preload="auto"></audio>
+  <audio id="alert" src="sounds/discord_alert.mp3" preload="auto"></audio>
+  <audio id="siren" src="sounds/siren-passing-275127.mp3" preload="auto"></audio>
+  <audio id="bgMusic" src="sounds/lo-fi-house-200847.mp3" preload="auto" loop></audio>
+
+  <div id="musicToggle">
+    <button id="toggleMusic">🎵 Zapnout hudbu</button>
+  </div>
+
+  <!-- Úvodní obrazovka -->
+  <div id="introScreen">
+    <h2>❄️ SNĚHOVÝ DEALER ❄️</h2>
+    <p class="intro-text">
+      Rok 2025. Praha. <br>
+      Ve městě, kde ceny nájmů rostou rychleji než inflace, se zrodil jeden plán…<br><br>
+      Zásobit město… sněhem. <br> Ne ledem. Ne tím z nebe. Tím druhým. <br><br>
+      Vítej, nový dealere. Dnes začínáš odspodu – jen s tramvajenkou a 5 gramy. <br><br>
+      <em>Přežij. Vydělej. Vyhraj.</em>
+    </p>
+    <div class="intro-buttons">
+      <button class="btn" onclick="startGame()">▶️ ZAČÍT HRU</button>
+      <button class="btn" onclick="toggleHowToPlay()">ℹ️ JAK HRÁT</button>
+    </div>
+    <div id="howToPlay">
+      <ul>
+        <li>📩 Nabídky chodí přes Telegram – rozhodni se, jestli je přijmeš nebo odmítneš</li>
+        <li>⏱️ Doručení zabírá čas – čím lepší auto, tím rychleji doručíš</li>
+        <li>🚗 Auta také zvyšují popularitu – dražší = víc fame</li>
+        <li>🌟 Popularita zvyšuje počet objednávek ve čtvrtích, kde jsi známý</li>
+        <li>🚨 Policie tě sleduje po jednotlivých čtvrtích – pokud jsi moc známý, riskuješ zatčení</li>
+        <li>🧼 Jednou denně můžeš použít funkce na zmatení policie: nový mobil, SIM, holič nebo úplatek</li>
+        <li>📆 Každé pondělí přichází nabídka od dodavatele (větší stash za lepší cenu)</li>
+        <li>🎲 Náhodné události (one-take events) přinášejí příležitosti nebo rizika</li>
+        <li>📢 Telegram feed zobrazuje zpětnou vazbu zákazníků – ovlivňuje tvoji reputaci</li>
+        <li>🏚️ Každých 30 dní platíš nájem 20 000 Kč – pokud nezaplatíš, majitel ti vezme část stashe</li>
+        <li>📅 5 dní před nájmem dostaneš varování, že se blíží platba</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script src="GameLogic.js"></script>
+</body>
+</html>

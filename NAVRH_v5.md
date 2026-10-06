@@ -95,6 +95,13 @@ Počet nabídek se už nepůlí. Základ je `1,5 + 1,1 × nejvyšší popularita
 - **Cena podle slávy:** běžné objednávky platí o 6 % víc za každý bod popularity nad 1 (popularita 5 = +24 %).
 - **Auta za realistické ceny** (český trh, ojetá): Yamaha Aerox 40 000 Kč, Golf IV 1.9 TDI 60 000 Kč, BMW 330d 220 000 Kč, Škoda Octavia RS 600 000 Kč, Audi RS6 Avant 1 600 000 Kč, BMW M4 (nové) 2 200 000 Kč. Provoz na den: 100 / 250 / 500 / 700 / 1 600 / 1 800 Kč.
 - **Nové čtvrti:** Libeň 60 000, Vršovice 90 000, Břevnov 120 000, Nusle 150 000 Kč. Na mapě jsou vidět jako zamčené stíny s cenou. Každá má 11 vlastních nicků.
+
+## 2h. Prodejci: vylepšení a ochrana
+
+- **Vylepšení každého prodejce zvlášť:** 💰 Cena +15 % (40 000 Kč), +30 % (80 000), +50 % (150 000) a 🕶️ Opatrnost: heat −25 % (40 000), −50 % (90 000), −70 % (180 000). Opatrnost snižuje i šanci na zatčení prodejce z 10 % na 7 / 4 / 2 % za noc. Každá úroveň přidá 150 Kč/den provozu.
+- **Zátah na hráče prodejci nikdy nezpůsobí.** Heat ve čtvrti zvednou nejvýš na 3,4, zátah je až při 3,5. Zatčen může být jen prodejce (ztratíš ho i vylepšení). Nepřímé riziko: čtvrť na 3,4 je těsně pod zátahem a stačí tvoje další doručení nebo event.
+- **Bezpečný režim** (výchozí při 85 % policie): prodejce se stáhne, neprodává, nezvedá heat, nemůže být zatčen a dostává polovinu výplaty. Přepíná se tlačítkem (vypnuto / 70 % / 85 %).
+- **Pozastavit / Obnovit** u každého prodejce a **Propustit** (s potvrzením). Staré uložené hry se převedou samy.
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.
