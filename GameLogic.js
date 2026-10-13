@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.14
+// Sněhový Dealer – verze 5.16
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.14";
-const BUILD = "2026-10-13.4";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.16";
+const BUILD = "2026-10-14.1";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -179,6 +179,7 @@ const telegramMessages = [
   "🟢 Dorazil i když pršelo, to cením.",
   "🟢 Díky za rychlost, kámo.",
   "🟢 Objednávám denně!",
+  "🟢 Prostě racing!",
   "🔴 Poslal mě do hajzlu, zklamání...",
   "🔴 Čekal jsem, ale neodepsal.",
   "🔴 Vysral se na mě a musel jsem jít spát v 10 jak šašek",
@@ -845,7 +846,7 @@ function generateOffer(forced) {
   const messages = [
     `hej bro, mas ${grams}? mam ${price} kc, ale specham do ${district}`,
     `Čau, mohl bys mi prosím doručit ${grams}g do ${district}? Mám připraveno ${price} Kč.`,
-    `ty vole kamo, potrebuju snih ${grams}g, cash ready ${price}, kde se potkáme?`,
+    `ty vole kamo, potrebuju ${grams}g racingu, cash ready ${price}, kde se potkáme?`,
     `zdar, hodis mi ${grams} do ${district}? mam ${price}kc, ale fakt specham`,
     `hele, mam jen ${price}kc, jsem na mrdku na teambuildingu :DD co za to dostanu treba ${grams}?`,
     `Bráško, dneska fakt nutně potrebuju ${grams}g třeba za ${price}, jsem v ${district}, ozvi se pls.`,
@@ -854,7 +855,7 @@ function generateOffer(forced) {
     `hej kamo, kamosz rikal ze mas kvalitu, vzal bych ${grams}g, cash ${price}kc`,
     `cau, jsem v ${district}, hodis mi ${grams}? mam ${price}kc, ale specham`,
     `ty kravo, potrebuju ${grams}g, jinak jsem v haji, mam ${price}kc`,
-    `Zdarec, ${grams} pls, cash ready ${price}kc, Praha jede`,
+    `Zdarec, dovez ${grams}g racingu pls, cash ready ${price}kc, Praha jede`,
     `cs pls ${grams} pls,za  ${price}kc, u me ${district}`,
     `Kolik ${grams} v kolik co nejdřív a za zakolik ${price}kc ?`,
     `Yo, kamo, ${grams}g za ${price}kc, ale fakt rychle, jsem v ${district}`,
@@ -862,7 +863,7 @@ function generateOffer(forced) {
     `Čau, máš čas? Vzal bych ${grams}g za ${price}, jsem v ${district}.`,
     `brasko, dneska fakt nutne potrebuju,je zima a snezi ${grams}g, cash ${price}`,
     `hej kamo, ${grams}g pls, ale specham, jsem v ${district}, mam ${price}`,
-    `yo, mas neco na zkousku? treba ${grams}, cash ready ${price}kc`,
+    `yo, mas racing na zkousku? treba ${grams}g, cash ready ${price}kc`,
     `Dobrý den, mohl byste mi doručit ${grams} do ${district}? Mám připraveno ${price} Kč.`,
     `bro vim ze je utery ale ${grams}g by mi zachranilo den, ${price}kc na ruku`,
     `kamo mam doma navstevu a nic k pivu... ${grams}g za ${price}kc pls ${district}`,
@@ -878,7 +879,7 @@ function generateOffer(forced) {
     `nejde mi net, ale tobe pisu... ${grams}g za ${price}kc ${district}`,
     `zdar ty zmrde, ${grams}g za ${price}kc, fakt nutne, mam rande :D`,
     `pls ${grams}g, ${price}kc, jsem v ${district} za Billou, mam zelenou bundu`,
-    `mrazi me, takze potrebuju ${grams}g snehu aby mi bylo tepleji :D ${price}kc`,
+    `mrazi me, takze potrebuju ${grams}g racingu aby mi bylo tepleji :D ${price}kc`,
     `Dobry den, pisu ohledne inzeratu. ${grams}g za ${price} Kc, prevzeti ${district}.`,
     `bracho ${grams}g, ${price}kc, a kdyby ses zdrzel tak se nic nedeje... skoro`,
     `kamo promin ze pisu v takovou dobu, ${grams}g za ${price}kc?`,
@@ -908,7 +909,7 @@ function generateOffer(forced) {
     `dobry vecer, prosim ${grams}g, ${price} Kc, uhrazeno v hotovosti a s usmevem`,
     `bro nejsem hrdy ale ${grams}g za ${price}kc je dneska moje jedina jistota`,
     `mel jsem tezky tyden. ${grams}g, ${price}kc, ${district}. nechces si povidat? ne? ok`,
-    `vol mi, pis mi, jen mi dones ${grams}g do ${district}, ${price}kc cash`,
+    `vol mi, pis mi, jen mi dones ${grams}g racingu do ${district}, ${price}kc cash`,
     `brasko ty jsi hrdina nasi doby. ${grams}g, ${price}kc, a hrdinum se neodmita`,
     `tahle zprava se po precteni nezničí, ale ${grams}g za ${price}kc je realna`,
     `ahoj, jsem z ${district}, mam rozpocet ${price}kc a velke ambice na ${grams}g`,
@@ -2572,6 +2573,7 @@ function advanceDay() {
   updateStatus();
   if (S.over) return;
   saveGame();
+  pushEarned();
   startDayOffers();
 }
 
@@ -2649,10 +2651,15 @@ function checkNick(raw) {
   if (BAD_WORDS.some(w => flat.includes(w))) return { ok: false, err: "Tenhle nick nejde použít, zkus jiný." };
   return { ok: true, nick };
 }
-function askNick(onDone) {
+// forced = hra bez nicku nepokračuje: okno nejde zavřít (jen zadáním platného nicku)
+function askNick(onDone, forced) {
   const modal = $("nickModal"), inp = $("nickInput"), err = $("nickErr");
   inp.value = getNick();
   err.textContent = "";
+  $("nickCancel").style.display = forced ? "none" : "";
+  $("nickText").textContent = forced
+    ? "Než začneš hrát, zadej svůj nick do žebříčku (2–16 znaků)."
+    : "Zadej svůj nick do žebříčku (2–16 znaků).";
   const close = () => { modal.style.display = "none"; };
   const submit = () => {
     const r = checkNick(inp.value);
@@ -2663,7 +2670,7 @@ function askNick(onDone) {
   };
   $("nickOk").onclick = submit;
   $("nickCancel").onclick = close;
-  inp.onkeydown = e => { if (e.key === "Enter") submit(); else if (e.key === "Escape") close(); };
+  inp.onkeydown = e => { if (e.key === "Enter") submit(); else if (e.key === "Escape" && !forced) close(); };
   modal.style.display = "flex";
   inp.focus();
   inp.select();
@@ -2717,30 +2724,34 @@ async function renderLeaderboard(boxId) {
   }
 }
 
-// Odeslání výsledku. Dokument má id = runId, takže opakované odeslání téhož běhu nevytvoří duplicitu.
-// Výhra: tabulka dnů + celkem vyděláno. Konec hry: jen celkem vyděláno (pokud už nebylo odesláno při výhře).
+// Nick, pod kterým tahle hra jde do žebříčku. Zapíše se do uložení, takže se po načtení z cloudu
+// na jiném zařízení (nebo po změně nicku) nemění a pravidla dovolí aktualizovat stejný záznam.
+function scoreNick() {
+  if (!S.nick) S.nick = getNick();
+  return S.nick;
+}
+const earnedDoc = () => ({ nick: scoreNick(), days: S.day, earned: Math.round(S.stats.earned), ts: firebase.firestore.FieldValue.serverTimestamp() });
+
+// Každý den: živý záznam v tabulce „Celkem vyděláno“ (id = runId, přepisuje se jen směrem nahoru).
+function pushEarned() {
+  const db = getDb();
+  if (!db || S.over || !scoreNick()) return;
+  db.collection("scoresEarned").doc(S.runId).set(earnedDoc())
+    .catch(e => console.warn("Aktualizace žebříčku se nepovedla:", e));
+}
+
+// Odeslání výsledku na konci hry. Tabulka „Celkem vyděláno“ se vždy aktualizuje na poslední hodnotu,
+// tabulka dnů dostane záznam jen při výhře a jen jednou (id dokumentu = runId, takže žádné duplicity).
 async function submitScores(win) {
   const box = $("endSubmit");
   box.textContent = "";
   const db = getDb();
-  if (!db) return;
-  if (!getNick()) {   // např. hra načtená z cloudu na zařízení, kde hráč ještě nezadal nick
-    box.textContent = "Do žebříčku potřebuju tvůj nick. ";
-    const b = document.createElement("button");
-    b.className = "link-btn";
-    b.textContent = "Zadat nick";
-    b.onclick = () => askNick(() => finishRun(win));
-    box.appendChild(b);
-    askNick(() => finishRun(win));
-    return;
-  }
+  if (!db || !scoreNick()) return;
   S.sent = S.sent || {};
-  const jobs = [];
+  const jobs = [["earned", "scoresEarned"]];
   if (win && !S.sent.days) jobs.push(["days", "scoresDays"]);
-  if (!S.sent.earned) jobs.push(["earned", "scoresEarned"]);
-  if (!jobs.length) return;
   box.textContent = "⏳ Odesílám výsledek…";
-  const doc = { nick: getNick(), days: S.day, earned: Math.round(S.stats.earned), ts: firebase.firestore.FieldValue.serverTimestamp() };
+  const doc = earnedDoc();
   let failed = false, pending = false;
   for (const [key, coll] of jobs) {
     const write = db.collection(coll).doc(S.runId).set(doc);
@@ -2762,7 +2773,7 @@ async function submitScores(win) {
   } else if (pending) {
     box.textContent = "📡 Čekám na připojení, výsledek se odešle, jakmile bude síť.";
   } else {
-    box.textContent = `✅ Výsledek odeslán jako ${getNick()}.`;
+    box.textContent = `✅ Výsledek odeslán jako ${scoreNick()}.`;
   }
 }
 async function finishRun(win) {
@@ -2978,7 +2989,7 @@ function resetUi() {
 
 function startNewGame() {
   // při zapnutém online režimu se na začátku hry ptáme na nick (pokud ho hráč ještě nemá)
-  if (onlineOn() && !getNick()) { askNick(beginNewGame); return; }
+  if (onlineOn() && !getNick()) { askNick(beginNewGame, true); return; }
   beginNewGame();
 }
 
@@ -3004,6 +3015,8 @@ function beginNewGame() {
 
 function resumeFrom(loaded) {
   S = loaded;
+  // bez nicku se do hry nevstoupí (starší uložení, načtení z cloudu na novém zařízení)
+  if (onlineOn() && !getNick()) { askNick(() => resumeFrom(loaded), true); return; }
   syncDistricts();
   Object.keys(S.dealers || {}).forEach(dealerInfo);   // staré uložení: prodejce byl jen číslo
   resetUi();

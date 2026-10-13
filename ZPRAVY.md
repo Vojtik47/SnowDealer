@@ -1,6 +1,6 @@
 # Zprávy zákazníků ve hře
 
-Platí pro verzi 5.5. Zástupné značky: **{g}** = počet gramů, **{cena}** = cena v Kč, **{čtvrť}** = název čtvrti.
+Platí pro verzi 5.16. Zástupné značky: **{g}** = počet gramů, **{cena}** = cena v Kč, **{čtvrť}** = název čtvrti.
 Upravuješ je v souboru `GameLogic.js`; u každého seznamu je napsáno, kde ho najdeš.
 
 ## 1. Běžné poptávky (90)
@@ -8,7 +8,7 @@ Pole `messages` ve funkci `generateOffer`. Zákazník napíše náhodnou z nich.
 
 1. hej bro, mas {g}? mam {cena} kc, ale specham do {čtvrť}
 2. Čau, mohl bys mi prosím doručit {g}g do {čtvrť}? Mám připraveno {cena} Kč.
-3. ty vole kamo, potrebuju snih {g}g, cash ready {cena}, kde se potkáme?
+3. ty vole kamo, potrebuju {g}g racingu, cash ready {cena}, kde se potkáme?
 4. zdar, hodis mi {g} do {čtvrť}? mam {cena}kc, ale fakt specham
 5. hele, mam jen {cena}kc, jsem na mrdku na teambuildingu :DD co za to dostanu treba {g}?
 6. Bráško, dneska fakt nutně potrebuju {g}g třeba za {cena}, jsem v {čtvrť}, ozvi se pls.
@@ -17,7 +17,7 @@ Pole `messages` ve funkci `generateOffer`. Zákazník napíše náhodnou z nich.
 9. hej kamo, kamosz rikal ze mas kvalitu, vzal bych {g}g, cash {cena}kc
 10. cau, jsem v {čtvrť}, hodis mi {g}? mam {cena}kc, ale specham
 11. ty kravo, potrebuju {g}g, jinak jsem v haji, mam {cena}kc
-12. Zdarec, {g} pls, cash ready {cena}kc, Praha jede
+12. Zdarec, dovez {g}g racingu pls, cash ready {cena}kc, Praha jede
 13. cs pls {g} pls,za  {cena}kc, u me {čtvrť}
 14. Kolik {g} v kolik co nejdřív a za zakolik {cena}kc ?
 15. Yo, kamo, {g}g za {cena}kc, ale fakt rychle, jsem v {čtvrť}
@@ -25,7 +25,7 @@ Pole `messages` ve funkci `generateOffer`. Zákazník napíše náhodnou z nich.
 17. Čau, máš čas? Vzal bych {g}g za {cena}, jsem v {čtvrť}.
 18. brasko, dneska fakt nutne potrebuju,je zima a snezi {g}g, cash {cena}
 19. hej kamo, {g}g pls, ale specham, jsem v {čtvrť}, mam {cena}
-20. yo, mas neco na zkousku? treba {g}, cash ready {cena}kc
+20. yo, mas racing na zkousku? treba {g}g, cash ready {cena}kc
 21. Dobrý den, mohl byste mi doručit {g} do {čtvrť}? Mám připraveno {cena} Kč.
 22. bro vim ze je utery ale {g}g by mi zachranilo den, {cena}kc na ruku
 23. kamo mam doma navstevu a nic k pivu... {g}g za {cena}kc pls {čtvrť}
@@ -41,7 +41,7 @@ Pole `messages` ve funkci `generateOffer`. Zákazník napíše náhodnou z nich.
 33. nejde mi net, ale tobe pisu... {g}g za {cena}kc {čtvrť}
 34. zdar ty zmrde, {g}g za {cena}kc, fakt nutne, mam rande :D
 35. pls {g}g, {cena}kc, jsem v {čtvrť} za Billou, mam zelenou bundu
-36. mrazi me, takze potrebuju {g}g snehu aby mi bylo tepleji :D {cena}kc
+36. mrazi me, takze potrebuju {g}g racingu aby mi bylo tepleji :D {cena}kc
 37. Dobry den, pisu ohledne inzeratu. {g}g za {cena} Kc, prevzeti {čtvrť}.
 38. bracho {g}g, {cena}kc, a kdyby ses zdrzel tak se nic nedeje... skoro
 39. kamo promin ze pisu v takovou dobu, {g}g za {cena}kc?
@@ -71,7 +71,7 @@ Pole `messages` ve funkci `generateOffer`. Zákazník napíše náhodnou z nich.
 63. dobry vecer, prosim {g}g, {cena} Kc, uhrazeno v hotovosti a s usmevem
 64. bro nejsem hrdy ale {g}g za {cena}kc je dneska moje jedina jistota
 65. mel jsem tezky tyden. {g}g, {cena}kc, {čtvrť}. nechces si povidat? ne? ok
-66. vol mi, pis mi, jen mi dones {g}g do {čtvrť}, {cena}kc cash
+66. vol mi, pis mi, jen mi dones {g}g racingu do {čtvrť}, {cena}kc cash
 67. brasko ty jsi hrdina nasi doby. {g}g, {cena}kc, a hrdinum se neodmita
 68. tahle zprava se po precteni nezničí, ale {g}g za {cena}kc je realna
 69. ahoj, jsem z {čtvrť}, mam rozpocet {cena}kc a velke ambice na {g}g
@@ -175,7 +175,7 @@ Funkce `startNewGame`.
 
 > Ahoj, já končím takže předávám svoje řemeslo, dal jsem kontakt na tebe pár lidem co vím, že jsou v pohodě. Taky jsem ti nechal 2 bůrky na začátek, hodně štěstí!
 
-## 6. Recenze v kanálu Snow Reviews (23)
+## 6. Recenze v kanálu Snow Reviews (24)
 Pole `telegramMessages`. 🟢 pochvalné, 🔴 negativní.
 
 1. 🟢 Tenhle týpek dává bomby!
@@ -192,15 +192,16 @@ Pole `telegramMessages`. 🟢 pochvalné, 🔴 negativní.
 12. 🟢 Dorazil i když pršelo, to cením.
 13. 🟢 Díky za rychlost, kámo.
 14. 🟢 Objednávám denně!
-15. 🔴 Poslal mě do hajzlu, zklamání...
-16. 🔴 Čekal jsem, ale neodepsal.
-17. 🔴 Vysral se na mě a musel jsem jít spát v 10 jak šašek
-18. 🔴 Nedodal, seru na to.
-19. 🔴 Šašek
-20. 🔴 Sergei z Wishe
-21. 🔴 Hraje si na ballera, ale nedodá.
-22. 🔴 Neodepsal stejně má jenom Pikain
-23. 🔴 Je to jen hype, ve skutečnosti nic.
+15. 🟢 Prostě racing!
+16. 🔴 Poslal mě do hajzlu, zklamání...
+17. 🔴 Čekal jsem, ale neodepsal.
+18. 🔴 Vysral se na mě a musel jsem jít spát v 10 jak šašek
+19. 🔴 Nedodal, seru na to.
+20. 🔴 Šašek
+21. 🔴 Sergei z Wishe
+22. 🔴 Hraje si na ballera, ale nedodá.
+23. 🔴 Neodepsal stejně má jenom Pikain
+24. 🔴 Je to jen hype, ve skutečnosti nic.
 
 ## 7. Tvoje odpovědi
 Pole `ACCEPT_REPLIES` (8) a `DECLINE_REPLIES` (8).

@@ -137,9 +137,9 @@ Počet nabídek se už nepůlí. Základ je `1,5 + 1,1 × nejvyšší popularita
 
 Vše běží přes Firebase Firestore (compat SDK z CDN). Dokud je v `index.html` `window.FIREBASE_CONFIG = null`, jsou online funkce schované a hra se chová jako dřív.
 
-- **Nick:** na začátku nové hry se hra zeptá (2 až 16 znaků, písmena, čísla, mezera, `_ . -`, jednoduchý filtr nevhodných slov). Uloží se do localStorage (`snowDealer.nick.v1`), na úvodní obrazovce jde změnit. Když hráč nick nemá, ale hra skončí (např. načtená z cloudu na novém zařízení), zeptá se hra před odesláním výsledku.
+- **Nick (povinný, verze 5.15):** bez nicku se do hry nevstoupí. Okno s dotazem (2 až 16 znaků, písmena, čísla, mezera, `_ . -`, jednoduchý filtr nevhodných slov) nejde zavřít, dokud hráč nezadá platný nick, a objeví se při nové hře, při „Pokračovat" i při načtení z cloudu. Uloží se do localStorage (`snowDealer.nick.v1`), na úvodní obrazovce jde změnit. Konkrétní hra si nick zapamatuje v uložení (`S.nick`), takže změna nicku neovlivní hru, která už běží, a záznam v žebříčku zůstane pod stejným jménem i po načtení na jiném zařízení.
 - **Žebříček top 20**, dvě tabulky: ⏱️ *Nejrychlejší výhra* (dny do 1 000 000 Kč, méně je lepší, při shodě je výš ten, kdo víc vydělal) a 💰 *Celkem vyděláno*. Zobrazuje se na úvodní obrazovce a na obrazovce konce hry.
-- **Odesílání:** výhra (`victory()`) pošle výsledek do obou tabulek, konec hry (`endGame()`) jen do tabulky *Celkem vyděláno*. Jedna hra se odešle do každé tabulky nejvýš jednou (id dokumentu = `runId` hry), takže když hráč po výhře pokračuje a pak prohraje, další záznam nevznikne. Bez připojení zůstane zápis ve frontě SDK a odejde sám.
+- **Odesílání (verze 5.15):** tabulka *Celkem vyděláno* je živá. Na začátku každého dne (`advanceDay()`) se pošle aktuální výsledek hry a přepíše se vždy stejný záznam (id dokumentu = `runId` hry). Hra se tak v žebříčku objeví po prvním dni, ne až na konci. Při konci hry i při výhře se pošle poslední hodnota (po výhře a „Pokračovat bez cíle" se tedy aktualizuje i při pozdější prohře). Tabulka *Nejrychlejší výhra* dostane záznam jen při výhře a jen jednou. Bez připojení zůstane zápis ve frontě SDK a odejde sám.
 - **Kód uložení:** tlačítko ☁️ Cloud na úvodní obrazovce vytvoří náhodný kód (24 znaků z 32 možných, zobrazí se jako `XXXX-XXXX-…`). Hra se pak zálohuje do cloudu na začátku každého dne (vedle localStorage, ten zůstává jako záloha). Na jiném zařízení hráč kód zadá a načte hru. Cloud ukládá jen JSON stavu hry, den a peníze, žádné osobní údaje.
 - **Konflikty:** každé cloudové uložení má číslo revize `rev`. Zápis projde jen když zařízení zná poslední revizi. Když je v cloudu novější uložení z jiného zařízení, hra se při pokračování i během hry zeptá, které použít (☁️ cloud / 💾 toto zařízení). Skončená hra se v cloudu označí a nenabízí se k načtení.
 - **Firestore pravidla a postup nastavení:** viz níže.
@@ -179,16 +179,21 @@ service cloud.firestore {
         && d.money is number;
     }
 
-    // žebříček: čtení a vložení, žádné úpravy ani mazání
+    // nejrychlejší výhra: čtení a vložení, žádné úpravy ani mazání
     match /scoresDays/{id} {
       allow read: if true;
       allow create: if validScore(id);
       allow update, delete: if false;
     }
+    // celkem vyděláno: živý záznam, upravit se dá jen stejný nick a jen směrem nahoru, mazat nejde
     match /scoresEarned/{id} {
       allow read: if true;
       allow create: if validScore(id);
-      allow update, delete: if false;
+      allow update: if validScore(id)
+        && request.resource.data.nick == resource.data.nick
+        && request.resource.data.days >= resource.data.days
+        && request.resource.data.earned >= resource.data.earned;
+      allow delete: if false;
     }
 
     // uložení: čte se jen podle znalosti kódu, vylistovat všechna nejde
@@ -203,7 +208,13 @@ service cloud.firestore {
 }
 ```
 
-**Omezení:** hra běží v prohlížeči, takže pravidla ohlídají jen tvar a rozumné rozmezí hodnot. Kdo umí napsat vlastní požadavek, může do žebříčku poslat vymyšlený výsledek v povoleném rozmezí. Pro hru pro kamarády je to v pořádku, přísnější ochrana by chtěla server.
+**Omezení:** hra běží v prohlížeči, takže pravidla ohlídají jen tvar a rozumné rozmezí hodnot. Kdo umí napsat vlastní požadavek, může do žebříčku poslat vymyšlený výsledek v povoleném rozmezí. Od verze 5.15 může navíc kdokoli zvednout hodnotu cizího záznamu v tabulce *Celkem vyděláno* (id dokumentů jsou v tabulce čitelné), jméno ale přepsat nejde. Pro hru pro kamarády je to v pořádku, přísnější ochrana by chtěla server nebo přihlášení hráčů.
+
+## 2n. „Racing" v textech zákazníků (verze 5.16)
+
+- Pět běžných poptávek (č. 3, 12, 20, 36 a 66 v `ZPRAVY.md`) místo „sníh" píše „racing", např. „Zdarec, dovez 5g racingu pls". Ostatní zprávy zůstaly, jak byly.
+- Do kanálu Snow Reviews přibyla pochvalná recenze „🟢 Prostě racing!" (celkem 24 recenzí).
+- Texty jsou aktualizované i v `ZPRAVY.md`.
 
 ## 3. Ladění obtížnosti
 
