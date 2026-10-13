@@ -28,7 +28,7 @@ Složka `sounds/` je stažená z tvého repozitáře beze změn. Soubor `discord
 - **Cíl a konec hry:** vyhraješ s 1 000 000 Kč v hotovosti (`GOAL_MONEY`). Pak můžeš pokračovat bez cíle. Konec hry má statistiky.
 - **Zátahy místo okamžitého zatčení:** při heatu 3,5 přijdeš o polovinu zásob a 10 000 Kč, druhý zátah znamená vězení. Zátahy se po 20 dnech promlčí. Právník (40 000 Kč) jeden zátah zruší. Před zátahem tě hra varuje.
 - **Stálí zákazníci:** věrnost 0–5. Stálý zákazník platí až +20 %, píše častěji. Odmítání ho odrazuje.
-- **Prémiové nabídky:** +25 až +40 % nad cenu, ale 1 ze 4 je policejní past.
+- **Prémiové nabídky:** +25 až +40 % nad cenu, ale 1 ze 6 je policejní past (od verze 5.20, dřív 1 ze 4).
 - **Víc textu a nicknamů:** přes 50 různých textů poptávek (ve stejném slangu), 6 speciálních pro stálé zákazníky a 11 nicknamů na čtvrť místo 5.
 - **Dodavatelé s povahou:** levný a riskantní (ošidí), spolehlivý, drahý... Týdenní tržní koeficient. Jsou jen v pondělí a nabídky platí jen ten den, takže zásoby plánuješ na celý týden.
 - **Kapacita stashe:** 20 g na začátku, vylepšení (skrýš, garáž, sklad).
@@ -223,6 +223,32 @@ service cloud.firestore {
 - **Zrušeno „aspoň 2 poptávky denně prvních 30 dní".** Zůstává jen „aspoň 1 denně". Rozjezd tedy závisí jen na popularitě a dni v týdnu, ne na počtu dní.
 - **Velikost objednávky:** 1 g 42 %, 2 g 33 %, 3 g 15 %, 4 g 5 %, 5 g 5 % (1 a 2 g dohromady 75 %).
 - **Průměr objednávek za den při popularitě kolem 1 (8 čtvrtí):** Po–St 1,1, Čt 1,3, Pá a So 1,9, Ne 1,2. Při popularitě 5: 1,9 / 3,6 / 6,6 / 2,6. Při popularitě 10 beze změny (11 / 22 / 40 / 16).
+
+## 2p. Méně převlečených policistů (verze 5.20)
+
+- Policejní past („převlečený policista") se teď objeví u 1 ze 6 prémiových nabídek, dřív u 1 ze 4 (o třetinu méně). Prémiových nabídek je 10 %, takže past tvoří zhruba 1,6 % všech objednávek, dřív 2,4 %.
+
+## 2q. Prodejci jen na objednávky, výplata do dluhu, popularita jen z recenzí (verze 5.21)
+
+- **Prodejci vyřizují jen poptávky, které opravdu přijdou** z jejich čtvrti (do denní kapacity, za 95 % ceny a s bonusem za upgrade ceny). Noční „prodej na ulici" bez objednávky je zrušený, takže už nepřidává gramy ani peníze. V chatu zbyl večerní řádek jen s výplatou („Výplaty prodejců: −500 Kč"). Nahrazuje to popis z 2h a 2j („co nestihne, prodá přes noc").
+- **Nemáš na výplatu prodejce:** prodejce neodchází, výplata (500 Kč, u staženého nebo pozastaveného polovina) se přičte k dluhu `S.debt` a zaplatí se spolu s nájmem, stejně jako dluh od lichváře nebo dodavatele. V chatu přijde hláška „Nemáš na výplatu prodejců, X Kč jde do dluhu (přičte se k nájmu)." Kurýři a policejní kontakty se chovají jako dřív (bez peněz odejdou).
+- **Popularita už neklesá sama** u čtvrtí bez doručení (zrušeno „konkurence ti zabírá trh": −0,15 po 3 dnech a −0,3 po 6 dnech bez doručení). Klesá jen kvůli negativním recenzím v kanálu Snow Reviews (−0,3 za recenzi, vznikají ze zklamaných zákazníků) a kvůli událostem, kde hráč zvolí špatnou možnost. Policejní heat dál vychládá jen ve čtvrtích bez doručení jako dřív.
+
+## 2r. Nový systém popularity a objednávek (verze 5.22) – nahrazuje 2l, 2o a části 2q
+
+**Popularita čtvrti je od 0 do 5** (dřív 0 až 10), hráč začíná na 0. Starší uložení se při načtení přepočítají (dělí se dvěma).
+- **Roste:** každá doručená objednávka dá čtvrti **+0,12** (i když ji vyřídí prodejce), plus pár událostí (hodnoty polovinou původních).
+- **Klesá:** jen když se objednávka nedoručí (odmítnutá, bez zásob, neodpovězená do konce dne): s **50% šancí −0,05** za každou. Nic jiného ji nesnižuje: recenze v kanálu jsou jen vtípek, bez vlivu, zrušené jsou i záporné dopady událostí (u „Naředit" ztratíš zboží, jinde se nic neděje).
+- **Rovnováha:** popularita roste, když doručíš aspoň pětinu objednávek (0,12 × podíl doručených > 0,025 × podíl nedoručených).
+- **Úrovně:** Neznámý < 0,5 < Místní < 1 < Známý < 2 < Hvězda < 3 < Celebrita < 4 < Legenda. Achievement „Hvězda čtvrti" je od 2.
+
+**Kolik objednávek přijde:** průměr za den na čtvrť `0,14 + 2,66 × (popularita / 5)³` (popularita 0 → 0,14, 1 → 0,16, 2 → 0,31, 3 → 0,70, 4 → 1,5, 5 → 2,8), násobeno dnem v týdnu (Po–St 0,45–0,55, Čt 1, Pá a So 1,8, Ne 0,7), náhodně zaokrouhleno, **nejvýš 5 z jedné čtvrti za den**, **celkový limit objednávek neexistuje**, aspoň 1 objednávka denně. Průměr za den při všech 8 čtvrtích na stejné popularitě: 0 → 1,1 až 2,1 (Po–St 1,1, Čt 1,4, Pá a So 2,1, Ne 1,2), 2 → 2,6, 3 → 5,6, 5 → 21,7.
+
+**Další přepočty na stupnici 0–5:** bonus k ceně +12 % za bod nad 0,5 (popularita 2,5 = +24 %, 5 = +54 %, beze změny), velkoodběratelé od 1,75 (šance 12 / 22 / 35 % při 1,75 / 2,25 / 3,5), základní kapacita prodejce `1 + 1,2 × popularita`, heat za doručení `0,7 + 0,24 × popularita`, bonus popularity za auto a holiče poloviční, odběratelé kanálu `× 440` místo `× 220`.
+
+**Prodejci:** berou si **15 % z ceny objednávky** (ty dostaneš 85 %, dřív 95 %) a **nemají žádnou pevnou výplatu**, takže zmizel i dluh za výplatu a odchod bez peněz. Pořád vyřizují jen příchozí objednávky. Policejní kontakty, kurýři a auto mají provoz jako dřív.
+
+**Model (jen orientační, bez policie a událostí):** při doručení +0,12 a 6 objednávkách denně hráč dosáhne 1 000 000 Kč zhruba za 140 dní.
 
 ## 3. Ladění obtížnosti
 
