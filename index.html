@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sněhový Dealer</title>
-  <meta name="build" content="2026-10-06.6" />
+  <meta name="build" content="2026-10-13.4" />
   <style>
     :root {
       --bg: #0b141e;
@@ -330,6 +330,43 @@
     #howToPlay ul { padding-left: 20px; }
     #howToPlay li { margin-bottom: 6px; }
     #endStats { text-align: left; margin: 14px 0 20px; line-height: 1.7; background: #0f1923; padding: 12px 16px; border-radius: 12px; }
+    /* vysoký obsah se dá rolovat od začátku (místo oříznutí nahoře) */
+    #introScreen, #endScreen { justify-content: flex-start; }
+    #introScreen .splash:first-of-type, #endScreen .splash:first-of-type { margin-top: auto; }
+    #introScreen .splash:last-of-type, #endScreen .splash:last-of-type { margin-bottom: auto; }
+    #introScreen .splash + .splash { margin-top: 14px; }
+
+    /* ---------- leaderboard, nick, cloud ---------- */
+    .lb h3 { margin: 0 0 10px; font-size: 1.1rem; }
+    .lb-tabs { display: flex; gap: 6px; justify-content: center; margin-bottom: 10px; }
+    .lb-tabs .btn { margin: 0; padding: 6px 12px; font-size: 0.82rem; }
+    .lb-tabs .btn.active { background: linear-gradient(135deg, #3d8fdc, #2b6cb0); border-color: transparent; }
+    .lb-list { text-align: left; font-size: 0.9rem; max-height: 300px; overflow-y: auto; background: #0f1923; border-radius: 12px; padding: 6px 10px; }
+    .lb-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+    .lb-row:last-child { border-bottom: 0; }
+    .lb-row .rank { color: var(--muted); }
+    .lb-row .nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-row .val { color: var(--accent); font-variant-numeric: tabular-nums; }
+    .lb-msg { text-align: center; padding: 10px 0; color: var(--muted); font-size: 0.85rem; }
+    .nick-line { margin: 0 0 14px; font-size: 0.9rem; color: #cfd9e3; }
+    .link-btn { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0 2px; text-decoration: underline; }
+    #nickModal { position: fixed; inset: 0; z-index: 10100; display: none; align-items: center; justify-content: center; background: rgba(4, 9, 14, 0.7); backdrop-filter: blur(3px); padding: 20px; }
+    #nickModal .splash { padding: 22px; text-align: center; }
+    #lbModal { position: fixed; inset: 0; z-index: 10100; display: none; align-items: center; justify-content: center; background: rgba(4, 9, 14, 0.7); backdrop-filter: blur(3px); padding: 20px; }
+    #lbModal .splash { padding: 22px; text-align: center; max-height: 90vh; overflow-y: auto; }
+    #nickModal p { margin: 0 0 12px; line-height: 1.5; }
+    .text-input { width: 100%; box-sizing: border-box; padding: 10px 12px; margin-bottom: 8px; background: #0f1923; color: var(--text); border: 1px solid var(--line); border-radius: 10px; font: inherit; text-align: center; }
+    .form-err { color: #ff9b9b; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
+    #cloudPanel { display: none; text-align: left; font-size: 0.9rem; margin-top: 18px; color: #c3cfda; }
+    #cloudPanel.open { display: block; }
+    .cloud-panel { text-align: left; font-size: 0.9rem; color: #c3cfda; }
+    .cloud-panel .code { font-family: Consolas, monospace; font-size: 1.05rem; letter-spacing: 1px; background: #0f1923; padding: 8px 10px; border-radius: 10px; margin: 6px 0; word-break: break-all; user-select: all; }
+    .cloud-panel .btn { margin: 4px 6px 4px 0; }
+    .cloud-status { font-size: 0.82rem; color: var(--muted); margin-top: 4px; min-height: 1.1em; }
+    #cloudModal { position: fixed; inset: 0; z-index: 10050; display: none; align-items: center; justify-content: center; background: rgba(4, 9, 14, 0.7); backdrop-filter: blur(3px); padding: 20px; }
+    #cloudModal .splash { padding: 22px; max-height: 90vh; overflow-y: auto; }
+    #cloudModal h3 { margin: 0 0 12px; text-align: center; }
+    #endSubmit { font-size: 0.85rem; color: var(--muted); margin-bottom: 12px; }
 
     /* ---------- mobil ---------- */
     @media (max-width: 920px) {
@@ -348,6 +385,8 @@
   <header class="topbar">
     <div class="brand">❄️ Sněhový Dealer <small id="versionTag"></small></div>
     <div id="status" class="stats"></div>
+    <button id="leaderboardBtn" class="chip-btn" onclick="showLeaderboard()">🏆 Žebříček</button>
+    <button id="cloudGameBtn" class="chip-btn" onclick="showCloudModal()">☁️ Cloud</button>
     <button id="toggleMusic" class="chip-btn">🔇 Hudba: vyp</button>
   </header>
 
@@ -439,7 +478,10 @@
         <button id="continueBtn" class="btn primary" style="display:none" onclick="continueGame()">⏯️ Pokračovat</button>
         <button class="btn primary" onclick="startNewGame()">▶️ Nová hra</button>
         <button class="btn" onclick="toggleHowToPlay()">ℹ️ Jak hrát</button>
+        <button id="cloudBtn" class="btn" onclick="toggleCloudPanel()">☁️ Cloud</button>
       </div>
+      <p class="nick-line">Nick: <b id="nickShown"></b> <button class="link-btn" onclick="changeNick()">změnit</button></p>
+      <div id="cloudPanel" class="cloud-panel"></div>
       <div id="howToPlay">
         <ul>
           <li>🎯 <b>Cíl:</b> našetři 1 000 000 Kč a zmiz z Prahy</li>
@@ -454,9 +496,44 @@
           <li>📦 Dodavatelé jsou jen v pondělí a nabídky platí jen ten den – nakup zásoby na celý týden! Mají různé ceny i spolehlivost. Když je přeskočíš, hra se tě před koncem dne zeptá. Kapacita stashe je omezená, vylepši zázemí</li>
           <li>🎲 Náhodné eventy mají důsledky – někdy až za pár dní (lichvář, dluhy). Některé jsou na čas: když nestihneš odpovědět, rozhodne se za tebe</li>
           <li>🏚️ Každých 30 dní platíš nájem. Roste pomalu, jednou za 2 měsíce. Nezaplacený nájem se mění v dluh</li>
-          <li>🚀 <b>Pozdní hra:</b> známá čtvrť platí víc (popularita 5 = +24 %) a občas napíše velkoodběratel (klub, hotel) – 10 až 50 g za 2 700 až 3 200 Kč/g. V záložce Zázemí můžeš najmout <b>prodejce</b> ve čtvrtích (prodávají z tvého stashe, zvedají heat, jdou vylepšit na vyšší cenu a opatrnost, pozastavit i propustit; v bezpečném režimu se při vysoké policii sami stáhnou), koupit <b>policejní kontakty</b> (pasivně snižují heat) a odemknout <b>nové čtvrti</b></li>
+          <li>🚀 <b>Pozdní hra:</b> známá čtvrť platí víc (popularita 5 = +24 %, 10 = +54 %) a popularita jde až do 10; z jedné čtvrti ale chodí nejvýš 5 poptávek denně a občas napíše velkoodběratel (klub, hotel) – 10 až 50 g za 2 700 až 3 200 Kč/g. V záložce Zázemí můžeš najmout <b>prodejce</b> ve čtvrtích (poptávky z jejich čtvrti vyřizují sami a v chatu vidíš jejich odpověď, prodávají z tvého stashe, zvedají heat, jdou vylepšit na vyšší kapacitu poptávek, cenu a opatrnost (bez příplatků za provoz), pozastavit i propustit; v bezpečném režimu se při vysoké policii sami stáhnou), koupit <b>policejní kontakty</b> (pasivně snižují heat) a odemknout <b>nové čtvrti</b></li>
           <li>💾 Hra se ukládá na začátku každého dne</li>
         </ul>
+      </div>
+    </div>
+    <div class="splash lb" id="lbIntro"></div>
+  </div>
+
+  <!-- Žebříček během hry -->
+  <div id="lbModal" onclick="if (event.target === this) closeLeaderboard()">
+    <div class="splash">
+      <div class="lb" id="lbGame"></div>
+      <div class="intro-buttons" style="margin-top:16px">
+        <button class="btn primary" onclick="closeLeaderboard()">Zavřít</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud (kód uložení) během hry -->
+  <div id="cloudModal" onclick="if (event.target === this) closeCloudModal()">
+    <div class="splash">
+      <h3>☁️ Cloudové uložení</h3>
+      <div id="cloudModalBody" class="cloud-panel"></div>
+      <div class="intro-buttons" style="margin-top:16px">
+        <button class="btn primary" onclick="closeCloudModal()">Zavřít</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dotaz na nick -->
+  <div id="nickModal">
+    <div class="splash">
+      <p id="nickText">Zadej svůj nick do žebříčku (2–16 znaků).</p>
+      <input id="nickInput" class="text-input" type="text" maxlength="16" autocomplete="off" />
+      <div id="nickErr" class="form-err"></div>
+      <div class="intro-buttons">
+        <button id="nickOk" class="btn primary">OK</button>
+        <button id="nickCancel" class="btn">Zrušit</button>
       </div>
     </div>
   </div>
@@ -467,6 +544,8 @@
       <h2 id="endTitle"></h2>
       <p id="endText" class="intro-text"></p>
       <div id="endStats"></div>
+      <div id="endSubmit"></div>
+      <div class="lb" id="lbEnd" style="margin-bottom:18px"></div>
       <div class="intro-buttons">
         <button id="endContinue" class="btn primary" style="display:none" onclick="continueAfterWin()">♾️ Pokračovat (bez cíle)</button>
         <button class="btn" onclick="startNewGame()">🔁 Hrát znovu</button>
@@ -494,6 +573,22 @@
       });
     })();
   </script>
-  <script src="GameLogic.js?b=2026-10-06.6"></script>
+  <!-- Firebase (compat SDK) – leaderboard a cloudové ukládání. Bez configu se cloud funkce vypnou. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script>
+    // Sem vlož veřejný web config z Firebase konzole (Project settings → Your apps → Web app → Config).
+    // Je veřejný, žádná tajemství. Ochrana dat je v pravidlech Firestore.
+    window.FIREBASE_CONFIG = {
+      apiKey: "AIzaSyAM1Qk00ppZNS1vkiSm0mIImUw-apVyJgQ",
+      authDomain: "snowdealer-7edf2.firebaseapp.com",
+      projectId: "snowdealer-7edf2",
+      storageBucket: "snowdealer-7edf2.firebasestorage.app",
+      messagingSenderId: "849767296748",
+      appId: "1:849767296748:web:e917cdbe53689179697fc9",
+      measurementId: "G-LTV3LNC2KL"
+    };
+  </script>
+  <script src="GameLogic.js?b=2026-10-13.4"></script>
 </body>
 </html>

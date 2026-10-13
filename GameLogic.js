@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.6
+// Sněhový Dealer – verze 5.14
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.6";
-const BUILD = "2026-10-06.6";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.14";
+const BUILD = "2026-10-13.4";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -124,7 +124,22 @@ const CONTACTS = [
   { name: "Náměstek policejního ředitele", price: 400000, upkeep: 8000, cool: 0.50 }
 ];
 // Prodejci: sami prodávají část poptávky ve své čtvrti (z tvého stashe), ale přidávají heat
-const DEALER = { hire: 25000, upkeep: 800, upgrade: 60000, upkeep2: 2000, pricePerG: 2000, heatPerG: 0.06, upgradeUpkeep: 150 };
+const DEALER = { hire: 25000, upkeep: 500, pricePerG: 2300, heatPerG: 0.05 };   // upgrady provoz nezvyšují
+// Kapacita: kolik poptávek denně prodejce vyřídí (základ 1 + 0,6 × popularita čtvrti, upgrade přidá pevný počet)
+const DEALER_CAP_LVLS = [
+  { cost: 50000, add: 2 }, { cost: 120000, add: 4 }, { cost: 300000, add: 7 }, { cost: 700000, add: 10 }
+];
+const poptavek = n => (n === 1 ? "poptávku" : n >= 2 && n <= 4 ? "poptávky" : "poptávek");   // 1 poptávku, 2 poptávky, 5 poptávek
+const dealerOffers = (d, dd) => 1 + Math.floor(S.pop[d] * 0.6) + (dd.cap ? DEALER_CAP_LVLS[dd.cap - 1].add : 0);
+// kolik gramů prodejce za noc prodá: roste s popularitou čtvrti (popularita 0,5 → 1 g, 2 → 3 g, 4 → 5 g, 5 → 7 g)
+const dealerGrams = d => Math.floor(1 + S.pop[d] * 1.2);   // gramy, které prodejce navíc prodá přes noc na ulici
+// poptávky ze čtvrti s prodejcem vyřídí sám (do denní kapacity); zákazníkovi nechá DEALER.share ceny, bonus za cenu to zvedá
+DEALER.share = 0.95;
+const DEALER_REPLIES = [
+  "beru to, šéfe, už jedu", "mám to pod kontrolou, ty si odpočiň", "klid, tohle je moje čtvrť, řeším",
+  "jasný, doručím, už se to veze", "jdu na to, ozvu se po předání", "máš to, za chvíli je to hotový",
+  "šéfe, tohle zvládnu sám, hotovo do hodinky"
+];
 // Vylepšení každého prodejce zvlášť: lepší cena za gram a opatrnost (méně heatu a menší šance na zatčení)
 const DEALER_PRICE_LVLS = [
   { cost: 40000, bonus: 0.15 }, { cost: 80000, bonus: 0.30 }, { cost: 150000, bonus: 0.50 }
@@ -251,12 +266,13 @@ function newState() {
     lastHaircutDay: null, secUsed: false, carDown: false,
     lastEventDay: 0, lastQuickDay: 0, recentEvents: [],
     loc: "home", offered: {}, boughtToday: false,
-    contact: 0, dealers: {}, dealerSafety: 2, unlocked: [], vipToday: 0,
+    contact: 0, dealers: {}, dealerSafety: 2, dealerSold: {}, dealerCount: {}, unlocked: [], vipToday: 0,
     market: 1, supplierOffers: [], pending: [], seq: 0,
     pop: {}, police: {}, warned: {}, idle: {}, freq: {},
     accepted: {}, loyalty: {}, usedToday: [], salesToday: false,
     today: { delivered: 0, grams: 0, startMoney: 5000 },
-    stats: { delivered: 0, grams: 0, earned: 0, raids: 0 }
+    stats: { delivered: 0, grams: 0, earned: 0, raids: 0 },
+    runId: genCode(), sent: {}   // id hry pro žebříček a příznaky, co už bylo odesláno
   };
   BASE_DISTRICTS.forEach(d => {
     s.pop[d] = 0.5; s.police[d] = 0; s.warned[d] = 0; s.idle[d] = 0; s.freq[d] = 0;
@@ -300,8 +316,12 @@ function fmtDur(h) {
 }
 const dayName = day => weekDays[(day - 1) % 7];
 
-function saveGame() {
+function saveLocal() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* storage nemusí být dostupné */ }
+}
+function saveGame() {
+  saveLocal();
+  cloudPush();   // záloha v cloudu (jen když má hráč kód uložení)
 }
 function loadGame() {
   try {
@@ -468,13 +488,20 @@ function customerBubble(nick, district, text) {
 }
 
 // tvoje odpověď (modrá bublina vpravo); quote = {nick, text} je citace zprávy, na kterou odpovídáš
-function playerBubble(text, quote) {
+function playerBubble(text, quote, label) {
   const row = document.createElement("div");
   row.className = "msg out";
   const col = document.createElement("div");
   col.className = "msg-col";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+  if (label) {
+    const who = document.createElement("div");
+    who.className = "bubble-name";
+    who.style.color = "#ffd48a";
+    who.textContent = label;
+    bubble.appendChild(who);
+  }
   if (quote) {
     const q = document.createElement("div");
     q.className = "quote";
@@ -533,8 +560,10 @@ function flashPolice() {
 /* =====================================================================
    POPULARITA, HEAT, ZÁTAHY
    ===================================================================== */
+// Popularita čtvrti jde až do 10 (úrovně: Neznámý < 1 < Místní < 2 < Známý < 4 < Hvězda < 6 < Celebrita < 8 < Legenda)
+const POP_MAX = 10;
 function addPop(d, v) {
-  S.pop[d] = clamp(S.pop[d] + v, 0, 5);
+  S.pop[d] = clamp(S.pop[d] + v, 0, POP_MAX);
   if (S.pop[d] >= 4) unlock("star");
 }
 function addPopAll(v) { districtNames.forEach(d => addPop(d, v)); }
@@ -718,44 +747,59 @@ function pickCustomer(d) {
   return nick;
 }
 
-// Kolik lidí dnes napíše. Základ roste s nejvyšší popularitou, a pak se násobí dnem v týdnu:
-// pondělí až středa je klid, čtvrtek se rozjíždí, nejvíc je v pátek a v sobotu, v neděli jen pár.
+// Kolik lidí dnes napíše. Každá čtvrť zvlášť podle své popularity (0 až 10): nízká popularita = pár zpráv, hodně až u vysoké
+// (popularita 1 → 0,25 denně, 5 → 0,57, 7 → 1,1, 8 → 1,6, 10 → 2,8). Pak se násobí dnem v týdnu: pondělí až středa klid,
+// čtvrtek se rozjíždí, nejvíc je v pátek a v sobotu, v neděli jen pár. Nejvýš 5 poptávek z jedné čtvrti za den.
 const WEEKDAY_DEMAND = {
   "Pondělí": 0.45, "Úterý": 0.5, "Středa": 0.55, "Čtvrtek": 1.0,
   "Pátek": 1.8, "Sobota": 1.8, "Neděle": 0.7
 };
-const MAX_OFFERS_PER_DAY = 14;
+const MAX_OFFERS_PER_DISTRICT = 5;
+const districtDemand = d => 0.25 + 2.55 * Math.pow(S.pop[d] / POP_MAX, 3) + (S.idle[d] >= 4 ? 0.15 : 0);
 
-function offersForToday() {
-  const maxPop = Math.max(...districtNames.map(d => S.pop[d]));
-  const baseline = 1.5 + 1.1 * maxPop;                    // popularita 0,5 → ~2, 3 → ~4,8, 5 → 7
-  const expected = baseline * WEEKDAY_DEMAND[dayName(S.day)];
-  let n = Math.floor(expected + Math.random());           // náhodné zaokrouhlení, ať průměr sedí
-  // rozjezd: prvních 30 dní aspoň 2 objednávky denně, než popularita roste sama
-  n = Math.max(n, S.day <= 30 ? 2 : 1);
-  return Math.min(n, MAX_OFFERS_PER_DAY);
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
 }
+
+// plán dne: seznam čtvrtí, ze kterých dnes přijde poptávka (v náhodném pořadí)
+function planOffers() {
+  const f = WEEKDAY_DEMAND[dayName(S.day)];
+  const plan = [];
+  districtNames.forEach(d => {
+    const n = Math.min(MAX_OFFERS_PER_DISTRICT, Math.floor(districtDemand(d) * f + Math.random()));   // náhodné zaokrouhlení
+    for (let i = 0; i < n; i++) plan.push(d);
+  });
+  // rozjezd: prvních 30 dní aspoň 2 poptávky denně, jinak aspoň 1
+  const min = S.day <= 30 ? 2 : 1;
+  while (plan.length < min) plan.push(pickDistrict());
+  return shuffle(plan);
+}
+const offersForToday = () => planOffers().length;
+
 function startDayOffers() {
   clearOfferTimers();
-  const n = offersForToday();
-  const gap = 2200;
-  for (let i = 0; i < n; i++) offerTimers.push(setTimeout(generateOffer, 300 + i * gap));
+  const plan = planOffers();
+  const n = plan.length;
+  // při hodně poptávkách chodí rychleji, ať celý příval trvá nejvýš ~40 vteřin
+  const gap = clamp(40000 / Math.max(1, n), 350, 2200);
+  plan.forEach((d, i) => offerTimers.push(setTimeout(() => generateOffer(d), 300 + i * gap)));
   if (Math.random() < 0.15) offerTimers.push(setTimeout(randomCustomerMessage, 300 + n * gap + 800));
   scheduleEvents(300 + n * gap + 1800);
 }
-
-function generateOffer() {
-  if (S.over || S.timeLeft <= 0) return;
+function generateOffer(forced) {
+  // po konci směny poptávky nechodí, jen do čtvrtí s prodejcem (ty vyřizuje prodejce)
+  if (S.over || (S.timeLeft <= 0 && !(forced && S.dealers[forced]))) return;
 
   let grams = weightedRandomChoice([
     { value: 1, weight: 0.40 }, { value: 2, weight: 0.30 }, { value: 3, weight: 0.20 },
     { value: 4, weight: 0.05 }, { value: 5, weight: 0.05 }
   ]);
-  const district = pickDistrict();
+  const district = forced || pickDistrict();
   // Velkoodběratel: ve hodně známé čtvrti občas napíše klub, hotel nebo firma. Chce 10–50 g
-  // za lepší cenu za gram. Nejvýš jeden za den a jen když máš aspoň 10 g.
+  // za lepší cenu za gram. Nejvýš čtyři za den a jen když máš aspoň 10 g.
   const pop = S.pop[district];
-  const vip = pop >= 3.5 && S.vipToday < 1 && S.supply >= 10 && Math.random() < (pop >= 4.5 ? 0.22 : 0.12);
+  const vip = pop >= 3.5 && S.vipToday < 4 && S.supply >= 10 && Math.random() < (pop >= 7 ? 0.35 : pop >= 4.5 ? 0.22 : 0.12);
   if (vip) {
     const sizes = [10, 15, 20, 30, 50].filter(g => g <= S.supply);
     grams = sizes[Math.floor(Math.pow(Math.random(), 1.6) * sizes.length)];   // menší zásilky jsou častější
@@ -781,7 +825,7 @@ function generateOffer() {
     } else if (roll >= 0.78) {
       price = basePrice * (1 - (0.05 + Math.random() * 0.10));
     }
-    // sláva se vyplácí: známá čtvrť platí víc (popularita 5 = +24 %)
+    // sláva se vyplácí: známá čtvrť platí víc (popularita 5 = +24 %, 10 = +54 %)
     price *= 1 + 0.06 * Math.max(0, pop - 1);
     if (loyal) price *= 1 + 0.04 * loyaltyOf(nickname);
   }
@@ -939,13 +983,23 @@ function generateOffer() {
   card.dataset.district = district;
   card._offer = offer;
   chatAppend(card);   // musí být v DOM dřív, než začne psaní
-  typeInto(b.text, vip ? rand(vipMessages) : loyal && Math.random() < 0.5 ? rand(loyalMessages) : rand(messages));
+  const msgText = vip ? rand(vipMessages) : loyal && Math.random() < 0.5 ? rand(loyalMessages) : rand(messages);
+  typeInto(b.text, msgText);
 
+  // máš ve čtvrti prodejce? Pak poptávku vyřídí on a ty uvidíš jeho odpověď
+  const auto = dealerTakes(offer);
   const order = document.createElement("div");
   order.className = "order";
-  order.innerHTML = `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b class="t">${fmtDur(time)}</b> · 🕘 <b class="arr">${clockAt(time)}</b>`
-    + badges.map(x => ` <span class="badge">${x}</span>`).join("");
+  order.innerHTML = auto
+    ? `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · 🧑‍💼 <b>vyřídí prodejce</b>`
+    : `📦 <b>${grams} g</b> · 💰 <b>${fmt(price)} Kč</b> · ⏱️ <b class="t">${fmtDur(time)}</b> · 🕘 <b class="arr">${clockAt(time)}</b>`
+      + badges.map(x => ` <span class="badge">${x}</span>`).join("");
   b.bubble.insertBefore(order, b.time);
+  if (auto) {
+    dealerSells(card, offer, msgText.length);
+    updateStatus();
+    return;
+  }
 
   const kb = document.createElement("div");
   kb.className = "kb row";
@@ -1464,7 +1518,46 @@ const EVENT_FACTORIES = [
       } }
     ]
   })
-];
+  ,
+  /* --- dobré události --- */
+  () => ({
+    mood: "good",
+    text: "💌 Spokojený zákazník ti poslal spropitné 2 000 Kč. Vezmeš ho?",
+    choices: [
+      { label: "Vzít", run: () => { S.money += 2000; logMessage("💰 Spropitné přistálo na účtu. +2 000 Kč."); } },
+      { label: "Poděkovat a odmítnout", run: () => { addPop(rand(districtNames), 0.3); logMessage("🤝 Zákazník je dojatý a rozkecá to dál. Popularita +0,3."); } }
+    ]
+  }),
+  () => ({
+    mood: "good",
+    text: "📣 Kamarád tě doporučil v kanálu Snow Reviews. Lidi se ptají, kde tě najdou.",
+    choices: [
+      { label: "Poděkovat", run: () => { addPop(rand(districtNames), 0.4); logMessage("📈 Doporučení zabralo. Popularita +0,4 v jedné čtvrti."); } },
+      { label: "Odpovědět memem", run: () => {
+        if (Math.random() < 0.5) { addPopAll(0.2); logMessage("😂 Meme se chytil! Popularita +0,2 všude."); }
+        else logMessage("🤷 Meme nikoho nepobavil, ale nic se nestalo.");
+      } }
+    ]
+  }),
+  () => ({
+    mood: "good",
+    text: "🍀 Šťastný den: v kabátě jsi našel zapomenuté 3 g.",
+    choices: [
+      { label: "Super, do stashe", run: () => { if (addSupply(3)) logMessage("❄️ +3 g do zásob."); } },
+      { label: "Dát je kamarádovi", run: () => { addPop(rand(districtNames), 0.3); logMessage("🎁 Kamarád je štěstím bez sebe. Popularita +0,3."); } }
+    ]
+  }),
+  () => ({
+    mood: "good",
+    text: "🏆 Místní blog napsal, že jsi nejlepší dealer čtvrti. Jak naložíš s pozorností?",
+    choices: [
+      { label: "Užít si slávu", run: () => { addPop(rand(districtNames), 0.5); logMessage("🌟 Sláva! Popularita +0,5 v jedné čtvrti."); } },
+      { label: "Zůstat v anonymitě", run: () => {
+        for (let i = 0; i < 2; i++) { const d = rand(districtNames); S.police[d] = Math.max(0, S.police[d] - 0.3); }
+        logMessage("🕶️ Nikdo tě nezná a policie je o trochu klidnější.");
+      } }
+    ]
+  })];
 
 function clearEventTimer() {
   if (eventTimer) { clearInterval(eventTimer); eventTimer = null; }
@@ -1472,9 +1565,9 @@ function clearEventTimer() {
 
 // Eventy se losují na začátku dne (aby je nešlo přeskočit kliknutím na „Další den“).
 // Den nejde ukončit, dokud nejsou všechny dnešní eventy zobrazené a vyřešené.
-// Event přijde nejdřív 4 dny po předchozím a pak s 30% šancí denně (průměrně jednou za ~7 dní).
+// Event přijde nejdřív 7 dní po předchozím a pak s 25% šancí denně (průměrně jednou za ~10 dní).
 function scheduleEvents(afterMs) {
-  eventsPending = (S.day - S.lastEventDay >= 4 && Math.random() < 0.3) ? 1 : 0;
+  eventsPending = (S.day - S.lastEventDay >= 7 && Math.random() < 0.25) ? 1 : 0;
   if (eventsPending) offerTimers.push(setTimeout(tryShowEvent, afterMs));
 }
 
@@ -1487,6 +1580,10 @@ function tryShowEvent() {
   showEvent();
 }
 
+// události, které hráči spíš pomohou
+const GOOD_EVENT_RE = /Našel jsi na zemi|narozky|sněhovou párty|Influencerka|Taxikář|spropitné|doporučil|Šťastný den|blog|burner/;
+const isGoodEvent = e => e.mood === "good" || GOOD_EVENT_RE.test(e.text);
+
 function showEvent() {
   // nepoužij event, který byl nedávno (posledních 10), a quicktime event nejvýš jednou za 10 dní
   const quickOk = S.day - S.lastQuickDay >= 10;
@@ -1494,7 +1591,9 @@ function showEvent() {
     .map((f, idx) => ({ e: f(), idx }))
     .filter(x => (!x.e.cond || x.e.cond()) && !S.recentEvents.includes(x.idx) && (!x.e.timeout || quickOk));
   if (!pool.length) { eventsPending = Math.max(0, eventsPending - 1); return; }
-  const picked = rand(pool);
+  // 40 % událostí je dobrých (nález peněz, pochvala, spropitné…), ať to není samé neštěstí
+  const good = pool.filter(x => isGoodEvent(x.e));
+  const picked = good.length && Math.random() < 0.4 ? rand(good) : rand(pool);
   const e = picked.e;
   S.recentEvents.push(picked.idx);
   if (S.recentEvents.length > 10) S.recentEvents.shift();
@@ -1581,10 +1680,65 @@ function processStaff() {
 // každý prodejce má tým (1/2), úroveň ceny a opatrnosti a možnost pozastavení; staré uložené hry mají jen číslo
 function dealerInfo(d) {
   const x = S.dealers[d];
-  if (typeof x === "number") S.dealers[d] = { team: x, price: 0, stealth: 0, paused: false };
-  return S.dealers[d];
+  if (typeof x === "number") S.dealers[d] = { cap: x === 2 ? 1 : 0, price: 0, stealth: 0, paused: false };   // nejstarší uložení
+  const dd = S.dealers[d];
+  if (dd && "team" in dd) { dd.cap = dd.team === 2 ? 1 : 0; delete dd.team; }                          // dřívější „tým“ → kapacita 1
+  if (dd && dd.cap === undefined) dd.cap = 0;
+  return dd;
 }
-const dealerUpkeep = dd => (dd.team === 2 ? DEALER.upkeep2 : DEALER.upkeep) + DEALER.upgradeUpkeep * (dd.price + dd.stealth);
+const dealerUpkeep = () => DEALER.upkeep;
+
+// Prodejce ve čtvrti vyřídí příchozí poptávku sám, pokud není pozastavený ani stažený a má ještě denní kapacitu.
+function dealerTakes(o) {
+  if (!S.dealers[o.district]) return false;
+  const dd = dealerInfo(o.district);
+  if (dd.paused) return false;
+  const safety = DEALER_SAFETY[S.dealerSafety];
+  if (safety.heat !== null && S.police[o.district] >= safety.heat) return false;
+  if ((S.dealerCount[o.district] || 0) >= dealerOffers(o.district, dd)) return false;
+  return S.supply >= o.grams;
+}
+
+// Provede prodej přes prodejce hned (peníze, zásoby, heat) a o chvíli později v chatu ukáže jeho odpověď a výsledek.
+function dealerSells(card, o, msgLen) {
+  const d = o.district;
+  const dd = dealerInfo(d);
+  card.dataset.done = "1";
+  card.classList.add("closed", "handled");
+  S.dealerSold[d] = (S.dealerSold[d] || 0) + o.grams;
+  S.dealerCount[d] = (S.dealerCount[d] || 0) + 1;
+  S.supply -= o.grams;
+  let text, bad = false;
+  if (o.trap) {
+    // past: prodejce přijde o zboží, heat roste a může skončit v poutech (opatrnost šanci snižuje)
+    S.police[d] = Math.min(3.4, S.police[d] + 1.5);
+    const arrested = Math.random() < [0.4, 0.3, 0.2, 0.1][dd.stealth];
+    if (arrested) delete S.dealers[d];
+    text = `🚓 Past! ${o.nickname} byl převlečený policista. Prodejce přišel o zboží (${o.grams} g)${arrested ? " a skončil v poutech" : ""}.`;
+    bad = true;
+  } else {
+    const bonus = dd.price ? DEALER_PRICE_LVLS[dd.price - 1].bonus : 0;
+    const payout = Math.round(o.price * DEALER.share * (1 + bonus) / 100) * 100;
+    const heatMult = dd.stealth ? DEALER_STEALTH_LVLS[dd.stealth - 1].heat : 1;
+    S.money += payout;
+    S.stats.delivered++; S.stats.grams += o.grams; S.stats.earned += payout;
+    S.today.delivered++; S.today.grams += o.grams;
+    S.police[d] = Math.min(3.4, S.police[d] + DEALER.heatPerG * heatMult * o.grams);
+    S.idle[d] = 0;
+    text = `✅ Prodejce doručil ${o.grams} g do ${d}: +${fmt(payout)} Kč`;
+  }
+  checkHeat(d);
+  // odpověď prodejce a výsledek se ukážou přímo pod poptávkou, až se dopíše zpráva zákazníka
+  const delay = Math.min(3500, msgLen * 15 + 450);
+  setTimeout(() => {
+    if (!card.isConnected) return;
+    withAnchor(card, () => {
+      const q = card.querySelector(".bubble-text");
+      playerBubble(rand(DEALER_REPLIES), { nick: o.nickname, text: q ? q.textContent : "" }, `🧑‍💼 Tvůj prodejce · ${d}`);
+      sysMessage(text);
+    });
+  }, delay);
+}
 
 // Prodejci NIKDY nezpůsobí zátah na tebe: heat ve čtvrti zvednou nejvýš na 3,4 (zátah je až při 3,5).
 // Zatčen může být jen prodejce (ztrácíš ho). Pozastavení a bezpečný režim ho ale před tím stáhnou.
@@ -1598,14 +1752,14 @@ function processDealers() {
     const dd = dealerInfo(d);
     const hidden = dd.paused || (safety.heat !== null && S.police[d] >= safety.heat);
     // stažený nebo pozastavený prodejce dostává jen poloviční výplatu (čeká)
-    const upkeep = Math.round(dealerUpkeep(dd) / (hidden ? 2 : 1));
+    const upkeep = Math.round(dealerUpkeep() / (hidden ? 2 : 1));
     if (S.money < upkeep) { delete S.dealers[d]; quit.push(d); return; }
     S.money -= upkeep; cost += upkeep;
     if (hidden) { if (!dd.paused) withdrawn.push(d); return; }
     // prodejce ve čtvrti, kde je policie moc blízko, může skončit v poutech (opatrnost šanci snižuje)
     const arrestRate = dd.stealth ? DEALER_STEALTH_LVLS[dd.stealth - 1].arrest : 0.10;
     if (S.police[d] >= 3 && Math.random() < arrestRate) { delete S.dealers[d]; arrested.push(d); return; }
-    const g = Math.min(Math.floor(1 + S.pop[d] * 0.7) * dd.team, S.supply);
+    const g = Math.min(dealerGrams(d) - (S.dealerSold[d] || 0), S.supply);   // co nestihl přes den, prodá přes noc na ulici
     if (g <= 0) return;
     const bonus = dd.price ? DEALER_PRICE_LVLS[dd.price - 1].bonus : 0;
     const price = Math.round(DEALER.pricePerG * (1 + 0.06 * Math.max(0, S.pop[d] - 1)) * (1 + bonus) / 100) * 100;
@@ -1914,8 +2068,8 @@ function renderUpgrades() {
     if (!dd) {
       label.textContent = `${d}: nikdo `;
       row.appendChild(label);
-      add("Najmout", DEALER.hire, `Prodá ve čtvrti denně asi ${Math.floor(1 + S.pop[d] * 0.7)} g, provoz ${fmt(DEALER.upkeep)} Kč/den.`, () => {
-        S.dealers[d] = { team: 1, price: 0, stealth: 0, paused: false };
+      add("Najmout", DEALER.hire, `Vyřizuje poptávky z čtvrti sám (teď až ${1 + Math.floor(S.pop[d] * 0.6)} denně, ty to uvidíš v chatu), co nestihne, prodá přes noc. Provoz ${fmt(DEALER.upkeep)} Kč/den. Kapacitu jde zvýšit upgradem. Při nízké popularitě se téměř nevyplatí.`, () => {
+        S.dealers[d] = { cap: 0, price: 0, stealth: 0, paused: false };
         logMessage(`🧑‍💼 Najal jsi prodejce v ${d} (provoz ${fmt(DEALER.upkeep)} Kč/den).`);
       }, row);
       box.appendChild(row);
@@ -1925,24 +2079,25 @@ function renderUpgrades() {
     const hidden = !dd.paused && safety.heat !== null && S.police[d] >= safety.heat;
     const bonus = dd.price ? `+${Math.round(DEALER_PRICE_LVLS[dd.price - 1].bonus * 100)} % cena` : "základní cena";
     const heat = dd.stealth ? `−${Math.round((1 - DEALER_STEALTH_LVLS[dd.stealth - 1].heat) * 100)} % heat` : "běžný heat";
-    label.textContent = `${d}: ${dd.team === 2 ? "tým" : "prodejce"} · ${bonus} · ${heat}${dd.paused ? " · ⏸️ pozastaven" : hidden ? " · 🕶️ stažený" : ""} `;
+    label.textContent = `${d}: prodejce (vyřídí denně ${dealerOffers(d, dd)} ${poptavek(dealerOffers(d, dd))}) · ${bonus} · ${heat}${dd.paused ? " · ⏸️ pozastaven" : hidden ? " · 🕶️ stažený" : ""} `;
     row.appendChild(label);
-    if (dd.team === 1) {
-      add("Posílit na tým", DEALER.upgrade, `Dvojnásobný prodej, provoz ${fmt(DEALER.upkeep2)} Kč/den.`, () => {
-        dd.team = 2;
-        logMessage(`🧑‍💼 V ${d} máš teď tým prodejců.`);
+    if (dd.cap < DEALER_CAP_LVLS.length) {
+      const u = DEALER_CAP_LVLS[dd.cap];
+      add(`📈 Kapacita +${u.add} ${poptavek(u.add)} denně`, u.cost, `Prodejce vyřídí denně o ${u.add} ${poptavek(u.add)} víc (celkem ${1 + Math.floor(S.pop[d] * 0.6) + u.add}).`, () => {
+        dd.cap++;
+        logMessage(`📈 Prodejce v ${d} zvládne víc: ${1 + Math.floor(S.pop[d] * 0.6) + u.add} ${poptavek(1 + Math.floor(S.pop[d] * 0.6) + u.add)} denně.`);
       }, row);
     }
     if (dd.price < DEALER_PRICE_LVLS.length) {
       const u = DEALER_PRICE_LVLS[dd.price];
-      add(`💰 Cena +${Math.round(u.bonus * 100)} %`, u.cost, `Prodává za ${Math.round(u.bonus * 100)} % víc. Provoz +${fmt(DEALER.upgradeUpkeep)} Kč/den.`, () => {
+      add(`💰 Cena +${Math.round(u.bonus * 100)} %`, u.cost, `Prodává za ${Math.round(u.bonus * 100)} % víc.`, () => {
         dd.price++;
         logMessage(`💰 Prodejce v ${d} vyjednal lepší ceny (+${Math.round(u.bonus * 100)} %).`);
       }, row);
     }
     if (dd.stealth < DEALER_STEALTH_LVLS.length) {
       const u = DEALER_STEALTH_LVLS[dd.stealth];
-      add(`🕶️ Opatrnost −${Math.round((1 - u.heat) * 100)} % heat`, u.cost, `Zvedá heat o ${Math.round((1 - u.heat) * 100)} % méně a šance na zatčení klesne na ${Math.round(u.arrest * 100)} %. Provoz +${fmt(DEALER.upgradeUpkeep)} Kč/den.`, () => {
+      add(`🕶️ Opatrnost −${Math.round((1 - u.heat) * 100)} % heat`, u.cost, `Zvedá heat o ${Math.round((1 - u.heat) * 100)} % méně a šance na zatčení klesne na ${Math.round(u.arrest * 100)} %.`, () => {
         dd.stealth++;
         logMessage(`🕶️ Prodejce v ${d} je opatrnější (−${Math.round((1 - u.heat) * 100)} % heat).`);
       }, row);
@@ -2035,6 +2190,8 @@ const POP_COLOR = "#4da3ff";
 
 // úroveň známosti čtvrti: ikona a název
 function popInfo(pop) {
+  if (pop >= 8) return { icon: "👑", label: "Legenda" };
+  if (pop >= 6) return { icon: "💫", label: "Celebrita" };
   if (pop >= 4) return { icon: "🔥", label: "Hvězda" };
   if (pop >= 2) return { icon: "🌟", label: "Známý" };
   if (pop >= 1) return { icon: "📦", label: "Místní" };
@@ -2099,11 +2256,11 @@ function renderMap() {
     }
 
     nodes += `<g class="node${S.loc === d ? " here" : ""}${h >= 3 ? " danger" : ""}">
-      <title>${d}\n🌟 popularita: ${info.label} (${S.pop[d].toFixed(1)}/5)\n🚨 policie: ${hp} %</title>
+      <title>${d}\n🌟 popularita: ${info.label} (${S.pop[d].toFixed(1)}/${POP_MAX})\n🚨 policie: ${hp} %</title>
       <circle cx="${p.x}" cy="${p.y}" r="${R - 3}" class="disc"/>
       <path d="${halfArc(p.x, p.y, R, "left", 1)}" class="arc-bg"/>
       <path d="${halfArc(p.x, p.y, R, "right", 1)}" class="arc-bg"/>
-      <path d="${halfArc(p.x, p.y, R, "left", S.pop[d] / 5)}" class="arc pop"/>
+      <path d="${halfArc(p.x, p.y, R, "left", S.pop[d] / POP_MAX)}" class="arc pop"/>
       <path d="${halfArc(p.x, p.y, R, "right", h / 3.5)}" class="arc heat" stroke="${col}"/>
       <text x="${lx}" y="${p.y - 6}" class="node-label" text-anchor="${anchor}">${d}</text>
       <text x="${lx}" y="${p.y + 5}" class="node-sub" text-anchor="${anchor}" fill="${POP_COLOR}">${info.icon} ${info.label}</text>
@@ -2204,6 +2361,8 @@ function endGame(title, text) {
   S.over = true;
   clearSave();
   showEnd(title, text, false);
+  cloudPush();           // v cloudu se hra označí jako skončená
+  finishRun(false);
 }
 
 function victory() {
@@ -2211,6 +2370,7 @@ function victory() {
   unlock("rich");
   clearOfferTimers();
   showEnd("🏆 VYHRÁL JSI!", `Našetřil jsi ${fmt(GOAL_MONEY)} Kč za ${S.day} dní. Čas zmizet z Prahy… nebo to ještě chvíli protáhnout.`, true);
+  finishRun(true);
 }
 
 function continueAfterWin() {
@@ -2294,8 +2454,11 @@ function advanceDay() {
   clearOfferTimers();
 
   // neodpovězené nabídky = zklamaní zákazníci
+  const penalised = new Set();
   document.querySelectorAll("#gameLog .offer").forEach(card => {
-    if (!card.dataset.done) disappointCustomer(card.dataset.nickname, card.dataset.district);
+    if (card.dataset.done || penalised.has(card.dataset.district)) return;
+    penalised.add(card.dataset.district);
+    disappointCustomer(card.dataset.nickname, card.dataset.district);
   });
 
   // souhrn dne
@@ -2319,7 +2482,7 @@ function advanceDay() {
 
   // policejní akce: čím známější čtvrť, tím větší šance, že policie posílí hlídky
   let policeNote = null, policeTarget = null;
-  if (Math.random() < 0.15) {
+  if (Math.random() < 0.06) {
     const weights = districtNames.map(d => 0.3 + S.pop[d]);
     let r = Math.random() * weights.reduce((a, b) => a + b, 0);
     let target = districtNames[0];
@@ -2362,6 +2525,8 @@ function advanceDay() {
 
   processPending();
   processStaff();
+  S.dealerSold = {};   // nový den, kapacita prodejců se obnoví
+  S.dealerCount = {};
 
   // provoz kurýrů
   if (S.runners > 0) {
@@ -2411,6 +2576,393 @@ function advanceDay() {
 }
 
 /* =====================================================================
+   ONLINE: NICK, ŽEBŘÍČEK A CLOUDOVÉ UKLÁDÁNÍ (Firebase Firestore)
+   Bez window.FIREBASE_CONFIG (index.html) je vše vypnuté a hra funguje jako dřív.
+   ===================================================================== */
+const NICK_KEY = "snowDealer.nick.v1";
+const CLOUD_KEY = "snowDealer.cloud.v1";   // { code, rev } – kód uložení a poslední známá revize v cloudu
+const NICK_MIN = 2, NICK_MAX = 16;
+const LB_SIZE = 20;
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // 32 znaků, bez O/0/I/1
+const CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{24}$/;
+// jednoduchý filtr: porovnává se bez diakritiky, velikosti písmen, mezer a záměn číslic za písmena
+const BAD_WORDS = ["kurv", "kurev", "pico", "picus", "curak", "cernoch", "negr", "nigg", "fuck", "shit", "bitch", "cunt",
+  "penis", "vagin", "hovn", "sracka", "sraci", "debil", "kreten", "idiot", "hajzl", "buzer", "buzna", "hitler", "nazi"];
+
+const LB_TABLES = {
+  days: { coll: "scoresDays", label: "⏱️ Nejrychlejší výhra", field: "days", dir: "asc", val: r => `${r.days} dní` },
+  earned: { coll: "scoresEarned", label: "💰 Celkem vyděláno", field: "earned", dir: "desc", val: r => `${fmt(r.earned)} Kč` }
+};
+const lbTab = {};     // zvolená záložka pro každý box
+const lbToken = {};   // zahodí odpověď, když mezitím přišel novější požadavek
+
+let fbDb = null, fbTried = false;
+function getDb() {
+  if (fbDb) return fbDb;
+  if (fbTried) return null;
+  fbTried = true;
+  try {
+    const cfg = window.FIREBASE_CONFIG;
+    if (!cfg || !cfg.projectId || typeof firebase === "undefined") return null;
+    firebase.initializeApp(cfg);
+    fbDb = firebase.firestore();
+  } catch (e) { console.error("Firebase se nepodařilo spustit:", e); }
+  return fbDb;
+}
+const onlineOn = () => !!getDb();
+
+// odpověď serveru se čeká nanejvýš `ms`, pak se pokračuje bez ní (nepřeruší čekající zápis)
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+function genCode() {
+  const a = new Uint8Array(24);
+  crypto.getRandomValues(a);
+  return Array.from(a, b => CODE_ALPHABET[b % 32]).join("");   // 256 % 32 == 0, tedy rovnoměrně
+}
+const fmtCode = c => c.match(/.{1,4}/g).join("-");
+const normCode = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/* ---------- nick ---------- */
+function getNick() {
+  try { return localStorage.getItem(NICK_KEY) || ""; } catch (e) { return ""; }
+}
+function setNick(n) {
+  try { localStorage.setItem(NICK_KEY, n); } catch (e) { /* nic */ }
+  renderNickShown();
+}
+function renderNickShown() {
+  const el = $("nickShown");
+  if (el) el.textContent = getNick() || "—";
+}
+function checkNick(raw) {
+  const nick = String(raw || "").trim().replace(/\s+/g, " ");
+  if (nick.length < NICK_MIN || nick.length > NICK_MAX) return { ok: false, err: `Nick musí mít ${NICK_MIN} až ${NICK_MAX} znaků.` };
+  if (!/^[\p{L}\p{N} _.\-]+$/u.test(nick)) return { ok: false, err: "Povolená jsou písmena, čísla, mezera a _ . -" };
+  const flat = nick.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/0/g, "o").replace(/[1!]/g, "i").replace(/3/g, "e").replace(/[4@]/g, "a").replace(/[5$]/g, "s").replace(/7/g, "t")
+    .replace(/[^a-z]/g, "");
+  if (BAD_WORDS.some(w => flat.includes(w))) return { ok: false, err: "Tenhle nick nejde použít, zkus jiný." };
+  return { ok: true, nick };
+}
+function askNick(onDone) {
+  const modal = $("nickModal"), inp = $("nickInput"), err = $("nickErr");
+  inp.value = getNick();
+  err.textContent = "";
+  const close = () => { modal.style.display = "none"; };
+  const submit = () => {
+    const r = checkNick(inp.value);
+    if (!r.ok) { err.textContent = r.err; return; }
+    setNick(r.nick);
+    close();
+    onDone(r.nick);
+  };
+  $("nickOk").onclick = submit;
+  $("nickCancel").onclick = close;
+  inp.onkeydown = e => { if (e.key === "Enter") submit(); else if (e.key === "Escape") close(); };
+  modal.style.display = "flex";
+  inp.focus();
+  inp.select();
+}
+function changeNick() { askNick(() => { /* nick se uloží a zobrazí v setNick */ }); }
+
+/* ---------- žebříček ---------- */
+async function renderLeaderboard(boxId) {
+  const box = $(boxId);
+  if (!box || !onlineOn()) return;
+  const tab = lbTab[boxId] || "days";
+  const t = LB_TABLES[tab];
+  box.textContent = "";
+  const h = document.createElement("h3");
+  h.textContent = `🏆 Žebříček – top ${LB_SIZE}`;
+  const tabs = document.createElement("div");
+  tabs.className = "lb-tabs";
+  Object.keys(LB_TABLES).forEach(key => {
+    const b = document.createElement("button");
+    b.className = "btn" + (key === tab ? " active" : "");
+    b.textContent = LB_TABLES[key].label;
+    b.onclick = () => { lbTab[boxId] = key; renderLeaderboard(boxId); };
+    tabs.appendChild(b);
+  });
+  const list = document.createElement("div");
+  list.className = "lb-list";
+  const setMsg = text => { list.textContent = ""; const m = document.createElement("div"); m.className = "lb-msg"; m.textContent = text; list.appendChild(m); };
+  setMsg("Načítám…");
+  box.append(h, tabs, list);
+
+  const token = lbToken[boxId] = (lbToken[boxId] || 0) + 1;
+  try {
+    const snap = await withTimeout(getDb().collection(t.coll).orderBy(t.field, t.dir).limit(LB_SIZE).get(), 12000);
+    if (token !== lbToken[boxId]) return;
+    const rows = snap.docs.map(d => d.data());
+    if (tab === "days") rows.sort((a, b) => a.days - b.days || b.earned - a.earned);   // shoda dnů: víc vyděláno je výš
+    if (!rows.length) { setMsg("Zatím tu nikdo není."); return; }
+    list.textContent = "";
+    rows.forEach((r, i) => {
+      const row = document.createElement("div");
+      row.className = "lb-row";
+      const rank = document.createElement("span"); rank.className = "rank"; rank.textContent = `${i + 1}.`;
+      const nick = document.createElement("span"); nick.className = "nick"; nick.textContent = String(r.nick);
+      const val = document.createElement("span"); val.className = "val"; val.textContent = t.val(r);
+      row.append(rank, nick, val);
+      list.appendChild(row);
+    });
+  } catch (e) {
+    console.warn("Žebříček se nepodařilo načíst:", e);
+    if (token === lbToken[boxId]) setMsg("Žebříček se nepodařilo načíst.");
+  }
+}
+
+// Odeslání výsledku. Dokument má id = runId, takže opakované odeslání téhož běhu nevytvoří duplicitu.
+// Výhra: tabulka dnů + celkem vyděláno. Konec hry: jen celkem vyděláno (pokud už nebylo odesláno při výhře).
+async function submitScores(win) {
+  const box = $("endSubmit");
+  box.textContent = "";
+  const db = getDb();
+  if (!db) return;
+  if (!getNick()) {   // např. hra načtená z cloudu na zařízení, kde hráč ještě nezadal nick
+    box.textContent = "Do žebříčku potřebuju tvůj nick. ";
+    const b = document.createElement("button");
+    b.className = "link-btn";
+    b.textContent = "Zadat nick";
+    b.onclick = () => askNick(() => finishRun(win));
+    box.appendChild(b);
+    askNick(() => finishRun(win));
+    return;
+  }
+  S.sent = S.sent || {};
+  const jobs = [];
+  if (win && !S.sent.days) jobs.push(["days", "scoresDays"]);
+  if (!S.sent.earned) jobs.push(["earned", "scoresEarned"]);
+  if (!jobs.length) return;
+  box.textContent = "⏳ Odesílám výsledek…";
+  const doc = { nick: getNick(), days: S.day, earned: Math.round(S.stats.earned), ts: firebase.firestore.FieldValue.serverTimestamp() };
+  let failed = false, pending = false;
+  for (const [key, coll] of jobs) {
+    const write = db.collection(coll).doc(S.runId).set(doc);
+    const r = await Promise.race([
+      write.then(() => "ok", e => ({ err: e })),
+      new Promise(res => setTimeout(() => res("slow"), 12000))
+    ]);
+    if (r === "ok") S.sent[key] = true;
+    else if (r === "slow") pending = true;    // bez připojení: zápis zůstane ve frontě a odejde sám
+    else { failed = true; console.warn("Odeslání výsledku selhalo:", r.err); }
+  }
+  if (failed) {
+    box.textContent = "⚠️ Výsledek se nepodařilo odeslat. ";
+    const b = document.createElement("button");
+    b.className = "link-btn";
+    b.textContent = "Zkusit znovu";
+    b.onclick = () => finishRun(win);
+    box.appendChild(b);
+  } else if (pending) {
+    box.textContent = "📡 Čekám na připojení, výsledek se odešle, jakmile bude síť.";
+  } else {
+    box.textContent = `✅ Výsledek odeslán jako ${getNick()}.`;
+  }
+}
+async function finishRun(win) {
+  if (!onlineOn()) return;
+  await submitScores(win);
+  renderLeaderboard("lbEnd");
+}
+
+// žebříček během hry (tlačítko v horní liště)
+function showLeaderboard() {
+  $("lbModal").style.display = "flex";
+  renderLeaderboard("lbGame");
+}
+function closeLeaderboard() {
+  $("lbModal").style.display = "none";
+}
+
+/* ---------- cloudové ukládání ---------- */
+function cloudMeta() {
+  try {
+    const m = JSON.parse(localStorage.getItem(CLOUD_KEY));
+    if (m && CODE_RE.test(m.code)) return { code: m.code, rev: Number(m.rev) || 0 };
+  } catch (e) { /* nic */ }
+  return null;
+}
+function setCloudMeta(m) {
+  try {
+    if (m) localStorage.setItem(CLOUD_KEY, JSON.stringify(m));
+    else localStorage.removeItem(CLOUD_KEY);
+  } catch (e) { /* nic */ }
+}
+// uložený stav z cloudu (JSON v textu) → použitelná hra, nebo null (rozbité / skončená hra)
+function toState(s) {
+  if (!s || typeof s.day !== "number" || s.over) return null;
+  return Object.assign(newState(), s);
+}
+async function cloudFetch(code) {
+  const snap = await getDb().collection("saves").doc(code).get();
+  if (!snap.exists) return null;
+  const d = snap.data();
+  let state = null;
+  try { state = JSON.parse(d.data); } catch (e) { /* rozbité uložení */ }
+  return { rev: d.rev, day: d.day, money: d.money, data: d.data, state };
+}
+// převezme stav z cloudu jako aktuální hru
+function useRemote(code, remote, rs) {
+  closeCloudModal();
+  setCloudMeta({ code, rev: remote.rev });
+  S = rs;
+  saveLocal();
+  resumeFrom(rs);
+}
+
+let cloudBusy = false, cloudNext = null, cloudConflictOpen = false, cloudFailLogged = false;
+// Nahraje stav do cloudu. Revize (rev) hlídá, že se nepřepíše novější uložení z jiného zařízení.
+async function cloudPush(st) {
+  const meta = cloudMeta();
+  const state = st || S;
+  if (!meta || !onlineOn() || !state || cloudConflictOpen) return;
+  cloudNext = state;
+  if (cloudBusy) return;
+  cloudBusy = true;
+  try {
+    while (cloudNext) {
+      const cur = cloudNext;
+      cloudNext = null;
+      const m = cloudMeta();
+      const db = getDb();
+      const ref = db.collection("saves").doc(m.code);
+      const payload = { data: JSON.stringify(cur), day: cur.day, money: Math.round(cur.money) };
+      try {
+        const res = await db.runTransaction(async tx => {
+          const snap = await tx.get(ref);
+          if (snap.exists && snap.data().rev !== m.rev) return { conflict: true, remote: snap.data() };
+          const rev = snap.exists ? snap.data().rev + 1 : 1;
+          tx.set(ref, Object.assign({ rev }, payload));
+          return { rev };
+        });
+        if (res.conflict) { cloudNext = null; cloudConflict(m.code, res.remote); break; }
+        setCloudMeta({ code: m.code, rev: res.rev });
+        cloudFailLogged = false;
+      } catch (e) {
+        console.warn("Cloudové uložení se nepovedlo:", e);
+        if (!cloudFailLogged && S && !S.over) { cloudFailLogged = true; logMessage("☁️ Cloudové uložení se nepovedlo, hra je uložená jen v tomto zařízení."); }
+      }
+    }
+  } finally { cloudBusy = false; }
+}
+// během hry zjistíme, že cloud má novější uložení (jiné zařízení): hráč rozhodne
+function cloudConflict(code, remote) {
+  let rs = null;
+  try { rs = toState(JSON.parse(remote.data)); } catch (e) { /* rozbité */ }
+  if (!rs) {   // v cloudu je skončená / rozbitá hra, nemá cenu ji nabízet
+    setCloudMeta({ code, rev: remote.rev });
+    cloudPush();
+    return;
+  }
+  cloudConflictOpen = true;
+  askConfirm(
+    `☁️ V cloudu je novější uložení z jiného zařízení (den ${rs.day}, ${fmt(rs.money)} Kč). Tady máš den ${S.day}, ${fmt(S.money)} Kč. Které použít?`,
+    "☁️ Použít cloud", "💾 Použít toto zařízení",
+    () => { cloudConflictOpen = false; useRemote(code, remote, rs); },
+    () => { cloudConflictOpen = false; setCloudMeta({ code, rev: remote.rev }); cloudPush(); });
+}
+
+/* ---------- panel „Cloud“ na úvodní obrazovce ---------- */
+function toggleCloudPanel() {
+  const p = $("cloudPanel");
+  p.classList.toggle("open");
+  if (p.classList.contains("open")) renderCloudPanel(p);
+}
+// panel „Cloud“ během hry (tlačítko v horní liště)
+function showCloudModal() {
+  $("cloudModal").style.display = "flex";
+  renderCloudPanel($("cloudModalBody"));
+}
+function closeCloudModal() {
+  $("cloudModal").style.display = "none";
+}
+let cloudPanelEl = null, cloudStatusEl = null;   // právě zobrazený panel (úvodní obrazovka nebo okno ve hře)
+function cloudNote(text) {
+  if (cloudStatusEl) cloudStatusEl.textContent = text;
+}
+function renderCloudPanel(p) {
+  cloudPanelEl = p;
+  const meta = cloudMeta();
+  p.innerHTML = "";
+  const intro = document.createElement("div");
+  p.appendChild(intro);
+  if (meta) {
+    intro.innerHTML = "☁️ Postup se ukládá i do cloudu. <b>Tvůj kód uložení</b> (zapiš si ho, kdo ho zná, může hru načíst i přepsat):";
+    const code = document.createElement("div");
+    code.className = "code";
+    code.textContent = fmtCode(meta.code);
+    p.appendChild(code);
+    const copy = document.createElement("button");
+    copy.className = "btn";
+    copy.textContent = "📋 Zkopírovat";
+    copy.onclick = () => {
+      const done = () => cloudNote("Kód zkopírován.");
+      if (navigator.clipboard) navigator.clipboard.writeText(fmtCode(meta.code)).then(done, () => cloudNote("Kopírování nejde, opiš kód ručně."));
+      else cloudNote("Kopírování nejde, opiš kód ručně.");
+    };
+    p.appendChild(copy);
+  } else {
+    intro.textContent = "Cloudové ukládání zálohuje hru pod dlouhým náhodným kódem. Na jiném zařízení ho zadáš a pokračuješ. Žádné osobní údaje se neukládají.";
+    const create = document.createElement("button");
+    create.className = "btn primary";
+    create.textContent = "☁️ Vytvořit kód uložení";
+    create.onclick = () => {
+      setCloudMeta({ code: genCode(), rev: 0 });
+      const local = loadGame();
+      if (local) cloudPush(local);   // už rozehraná hra se hned zazálohuje
+      renderCloudPanel(p);
+      cloudNote("Kód vytvořen. Zapiš si ho.");
+    };
+    p.appendChild(create);
+  }
+  const lab = document.createElement("div");
+  lab.style.marginTop = "10px";
+  lab.textContent = meta ? "Načíst hru z jiného kódu:" : "Už mám kód:";
+  const inp = document.createElement("input");
+  inp.className = "text-input";
+  inp.placeholder = "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX";
+  inp.autocomplete = "off";
+  const load = document.createElement("button");
+  load.className = "btn";
+  load.textContent = "⬇️ Načíst z cloudu";
+  load.onclick = () => cloudLoadCode(inp.value);
+  const st = document.createElement("div");
+  st.className = "cloud-status";
+  cloudStatusEl = st;
+  p.append(lab, inp, load, st);
+}
+async function cloudLoadCode(raw) {
+  const code = normCode(raw);
+  if (!CODE_RE.test(code)) { cloudNote("Kód nemá správný tvar (24 znaků)."); return; }
+  cloudNote("⏳ Načítám…");
+  let remote;
+  try { remote = await withTimeout(cloudFetch(code), 12000); }
+  catch (e) { console.warn(e); cloudNote("Nepodařilo se spojit s cloudem."); return; }
+  if (!remote) { cloudNote("Pod tímto kódem nic není."); return; }
+  const rs = toState(remote.state);
+  if (!rs) { cloudNote("Hra pod tímto kódem už skončila nebo je poškozená."); return; }
+  const local = loadGame();
+  if (!local) { cloudNote(""); useRemote(code, remote, rs); return; }
+  cloudNote("");
+  askConfirm(
+    `Na tomto zařízení je rozehraná hra (den ${local.day}, ${fmt(local.money)} Kč). V cloudu pod kódem je den ${rs.day}, ${fmt(rs.money)} Kč. Které použít?`,
+    "☁️ Použít cloud", "💾 Nechat toto zařízení",
+    () => useRemote(code, remote, rs),
+    () => {
+      setCloudMeta({ code, rev: remote.rev });   // tato hra přepíše cloud při dalším uložení
+      cloudPush(local);
+      renderCloudPanel(cloudPanelEl);
+      cloudNote("Kód nastaven, tvoje hra se nahrála do cloudu.");
+    });
+}
+
+/* =====================================================================
    START, NAČTENÍ, HUDBA
    ===================================================================== */
 function resetUi() {
@@ -2425,6 +2977,12 @@ function resetUi() {
 }
 
 function startNewGame() {
+  // při zapnutém online režimu se na začátku hry ptáme na nick (pokud ho hráč ještě nemá)
+  if (onlineOn() && !getNick()) { askNick(beginNewGame); return; }
+  beginNewGame();
+}
+
+function beginNewGame() {
   clearSave();
   S = newState();
   syncDistricts();
@@ -2444,9 +3002,7 @@ function startNewGame() {
   saveGame();
 }
 
-function continueGame() {
-  const loaded = loadGame();
-  if (!loaded) { startNewGame(); return; }
+function resumeFrom(loaded) {
   S = loaded;
   syncDistricts();
   Object.keys(S.dealers || {}).forEach(dealerInfo);   // staré uložení: prodejce byl jen číslo
@@ -2456,6 +3012,41 @@ function continueGame() {
   logMessage(`💾 Hra načtena – ${dayName(S.day)}, den ${S.day}.`);
   updateStatus();
   startDayOffers();
+}
+
+async function continueGame() {
+  const local = loadGame();
+  const meta = cloudMeta();
+  if (meta && onlineOn()) {
+    const btn = $("continueBtn");
+    btn.disabled = true;
+    let remote = null;
+    try { remote = await withTimeout(cloudFetch(meta.code), 12000); }
+    catch (e) { console.warn("Cloud nedostupný:", e); }   // bez cloudu se hraje z lokálního uložení
+    btn.disabled = false;
+    if (remote && remote.rev > meta.rev) {
+      const rs = toState(remote.state);
+      if (!rs) {
+        setCloudMeta({ code: meta.code, rev: remote.rev });      // hra v cloudu už skončila
+      } else if (!local) {
+        useRemote(meta.code, remote, rs);
+        return;
+      } else {
+        askConfirm(
+          `☁️ V cloudu je novější uložení z jiného zařízení (den ${rs.day}, ${fmt(rs.money)} Kč). Na tomto zařízení je den ${local.day}, ${fmt(local.money)} Kč. Které použít?`,
+          "☁️ Použít cloud", "💾 Použít toto zařízení",
+          () => useRemote(meta.code, remote, rs),
+          () => {
+            setCloudMeta({ code: meta.code, rev: remote.rev });   // lokální uložení přepíše cloud
+            resumeFrom(local);
+            cloudPush();
+          });
+        return;
+      }
+    }
+  }
+  if (!local) { startNewGame(); return; }
+  resumeFrom(local);
 }
 
 // záložky obchodu: Dodavatelé / Auta / Zázemí / Policie
@@ -2505,6 +3096,15 @@ function init() {
   $("gameLog").addEventListener("scroll", updateScrollBtn);
   if (loadGame()) $("continueBtn").style.display = "";
 
+  // online funkce (žebříček, nick, cloud) jen s Firebase configem, jinak se schovají
+  if (onlineOn()) {
+    renderNickShown();
+    renderLeaderboard("lbIntro");
+  } else {
+    ["lbIntro", "lbEnd", "cloudPanel", "cloudBtn", "leaderboardBtn", "cloudGameBtn"].forEach(id => { $(id).style.display = "none"; });
+    document.querySelector(".nick-line").style.display = "none";
+  }
+
   $("toggleMusic").addEventListener("click", () => {
     const bg = $("bgMusic");
     if (!musicEnabled) {
@@ -2529,6 +3129,12 @@ window.startNewGame = startNewGame;
 window.continueGame = continueGame;
 window.continueAfterWin = continueAfterWin;
 window.toggleHowToPlay = toggleHowToPlay;
+window.toggleCloudPanel = toggleCloudPanel;
+window.showCloudModal = showCloudModal;
+window.closeCloudModal = closeCloudModal;
+window.showLeaderboard = showLeaderboard;
+window.closeLeaderboard = closeLeaderboard;
+window.changeNick = changeNick;
 window.showTab = showTab;
 window.scrollChat = scrollChat;
 window.nextDay = nextDay;

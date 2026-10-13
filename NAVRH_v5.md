@@ -102,6 +102,109 @@ Počet nabídek se už nepůlí. Základ je `1,5 + 1,1 × nejvyšší popularita
 - **Zátah na hráče prodejci nikdy nezpůsobí.** Heat ve čtvrti zvednou nejvýš na 3,4, zátah je až při 3,5. Zatčen může být jen prodejce (ztratíš ho i vylepšení). Nepřímé riziko: čtvrť na 3,4 je těsně pod zátahem a stačí tvoje další doručení nebo event.
 - **Bezpečný režim** (výchozí při 85 % policie): prodejce se stáhne, neprodává, nezvedá heat, nemůže být zatčen a dostává polovinu výplaty. Přepíná se tlačítkem (vypnuto / 70 % / 85 %).
 - **Pozastavit / Obnovit** u každého prodejce a **Propustit** (s potvrzením). Staré uložené hry se převedou samy.
+
+## 2i. Prodejci se vyplácejí, události jsou vzácnější (verze 5.7)
+
+- **Prodejci:** prodají za noc `1 + 1,2 × popularita` g (popularita 0,5 → 1 g, 2 → 3 g, 4 → 5 g, 5 → 7 g, tým dvojnásobek) za 2 300 Kč/g (plus bonus za slávu). Provoz je 500 Kč/den, tým 1 300 Kč/den, každé vylepšení +100 Kč/den, heat 0,05 za gram. Po odečtení výplaty i ceny zboží (1 450 Kč/g) vychází čistý zisk zhruba: popularita 1 → 1 200 Kč/den, 2 → 2 350, 3 → 4 100, 4 → 5 750, 5 → 9 650. Tým s maximálním vylepšením při popularitě 4 vydělá asi 24 600 Kč/den. V čtvrti s popularitou kolem 0,5 se prodejce téměř nevyplatí.
+- **Události** přicházejí nejdřív 7 dní po předchozí a pak s 25% šancí denně (průměrně jednou za 10 dní). 40 % jich je vždy dobrých a přibyly 4 nové dobré (spropitné, doporučení, nález 3 g, pochvala v blogu). Celkem je 31 událostí.
+- **Policejní akce** (posílené hlídky ve čtvrti): 6 % šance za noc místo 15 %, tedy zhruba jednou za 17 dní.
+
+## 2j. Prodejce vyřizuje poptávky sám (verze 5.8)
+
+- **Automatické přijetí:** když máš ve čtvrti prodejce a poptávka odtamtud přijde, vyřídí ji sám. V chatu uvidíš zprávu zákazníka s textem „vyřídí prodejce", pod ní odpověď prodejce (např. „beru to, šéfe, už jedu") s citací a výsledek („✅ Prodejce doručil 2 g do Karlína: +6 100 Kč"). Tvůj čas ani poloha se nemění.
+- **Denní kapacita:** prodejce vyřídí do `1 + 1,2 × popularita` g denně (tým dvojnásobek). Co se do kapacity nevejde (třeba velká zakázka), zůstane tobě s tlačítky. Zbylou kapacitu prodá přes noc na ulici jako dřív.
+- **Výplata:** prodejce dostane od zákazníka cenu poptávky a tobě odvede 95 %, bonus „Cena" (+15 / 30 / 50 %) to zvedá. Heat roste jako dřív (0,05 za gram, opatrnost to snižuje).
+- **Pozastavený nebo stažený** (bezpečný režim) prodejce nic nepřijímá, poptávka zůstane tobě.
+- **Past:** prodejce se do ní může chytit. Zboží je pryč, heat ve čtvrti +1,5 (nejvýš 3,4) a s šancí 40 % (30 / 20 / 10 % s opatrností) ho zatknou. Na tebe zátah nehrozí.
+
+## 2k. Prodejci bez příplatků, příval poptávek až u vysoké popularity (verze 5.9)
+
+- **Upgrady prodejců nezvyšují provoz.** Prodejce stojí pořád 500 Kč/den. „Posílit na tým" je pryč (staré uložené „týmy" se převedou na kapacitu 1).
+- **Nový upgrade 📈 Kapacita:** kolik poptávek denně prodejce vyřídí. Základ je `1 + 0,6 × popularita čtvrti`, upgrady přidají +2 (50 000 Kč), +4 (120 000), +7 (300 000) a +10 (700 000) poptávek denně. Vedle toho zůstává 💰 Cena (+15 / 30 / 50 %) a 🕶️ Opatrnost (−25 / 50 / 70 % heat). Poptávky se počítají na kusy, takže prodejce vyřídí i velkoodběratele, pokud má zásoby.
+- **Žádný celkový strop poptávek.** Každá čtvrť generuje poptávky podle své popularity: `0,25 + 0,00117 × popularita^5,2` za den, násobeno dnem v týdnu. Nejvýš **10 z jedné čtvrti denně**. Příval chodí rychleji (celý do ~40 s).
+- **Kolik poptávek denně vychází** (8 čtvrtí na stejné úrovni, v pátek/sobotu): popularita 2 → 4, 3 → 9, 3,5 → 15, 4 → 26, 4,5 → 46, 5 → 76. Pondělí až středa je zhruba čtvrtina.
+- **Nevyřízené poptávky** už netrestají za každou zvlášť: nejvýš jeden trest za čtvrť a den (jinak by stovky zpráv zničily popularitu).
+- Po konci směny přijdou poptávky už jen do čtvrtí s prodejcem.
+
+## 2l. Popularita do 10, nejvýš 5 poptávek z čtvrti (verze 5.10) – nahrazuje počty z 2k
+
+- **Strop popularity je 10** (dřív 5). Úrovně: Neznámý < 1, Místní, Známý od 2, Hvězda od 4, **Celebrita od 6**, **Legenda od 8**. Mapa a půlkruh popularity se přepočítaly na škálu 0 až 10.
+- **Nejvýš 5 poptávek z jedné čtvrti za den.** Každá čtvrť generuje `0,25 + 2,55 × (popularita / 10)^3` poptávek denně, pak násobeno dnem v týdnu (Po–St 0,45–0,55, Čt 1, Pá a So 1,8, Ne 0,7).
+- **Kolik poptávek denně vychází celkem** (8 čtvrtí na stejné úrovni, pátek/sobota): popularita 3 → 5, 5 → 8, 7 → 16, 8 → 22, 10 → 40. Se všemi 12 čtvrtěmi na 10 je to 60. Pondělí až středa je zhruba čtvrtina až třetina.
+- **Vyšší popularita víc vyplácí i víc hrozí:** cena roste o 6 % za bod nad 1 (popularita 10 = +54 %), heat za doručení roste (koeficient 0,7 + 0,12 × popularita), velkoodběratelé jsou častější (35 % při popularitě 7+) a prodejce vyřídí víc poptávek (základ 1 + 0,6 × popularita, při 10 je to 7).
+
+## 2m. Žebříček a cloudové ukládání (verze 5.11)
+
+Vše běží přes Firebase Firestore (compat SDK z CDN). Dokud je v `index.html` `window.FIREBASE_CONFIG = null`, jsou online funkce schované a hra se chová jako dřív.
+
+- **Nick:** na začátku nové hry se hra zeptá (2 až 16 znaků, písmena, čísla, mezera, `_ . -`, jednoduchý filtr nevhodných slov). Uloží se do localStorage (`snowDealer.nick.v1`), na úvodní obrazovce jde změnit. Když hráč nick nemá, ale hra skončí (např. načtená z cloudu na novém zařízení), zeptá se hra před odesláním výsledku.
+- **Žebříček top 20**, dvě tabulky: ⏱️ *Nejrychlejší výhra* (dny do 1 000 000 Kč, méně je lepší, při shodě je výš ten, kdo víc vydělal) a 💰 *Celkem vyděláno*. Zobrazuje se na úvodní obrazovce a na obrazovce konce hry.
+- **Odesílání:** výhra (`victory()`) pošle výsledek do obou tabulek, konec hry (`endGame()`) jen do tabulky *Celkem vyděláno*. Jedna hra se odešle do každé tabulky nejvýš jednou (id dokumentu = `runId` hry), takže když hráč po výhře pokračuje a pak prohraje, další záznam nevznikne. Bez připojení zůstane zápis ve frontě SDK a odejde sám.
+- **Kód uložení:** tlačítko ☁️ Cloud na úvodní obrazovce vytvoří náhodný kód (24 znaků z 32 možných, zobrazí se jako `XXXX-XXXX-…`). Hra se pak zálohuje do cloudu na začátku každého dne (vedle localStorage, ten zůstává jako záloha). Na jiném zařízení hráč kód zadá a načte hru. Cloud ukládá jen JSON stavu hry, den a peníze, žádné osobní údaje.
+- **Konflikty:** každé cloudové uložení má číslo revize `rev`. Zápis projde jen když zařízení zná poslední revizi. Když je v cloudu novější uložení z jiného zařízení, hra se při pokračování i během hry zeptá, které použít (☁️ cloud / 💾 toto zařízení). Skončená hra se v cloudu označí a nenabízí se k načtení.
+- **Firestore pravidla a postup nastavení:** viz níže.
+
+### Nastavení Firebase (jednorázově, osobní Google účet)
+
+1. https://console.firebase.google.com → **Add project** → název (např. `snehovy-dealer`), Google Analytics vypnout.
+2. **Build → Firestore Database → Create database** → edice Standard, lokalita `eur3 (europe-west)`, režim **Production mode**.
+3. Záložka **Rules** → smaž obsah, vlož pravidla níže → **Publish**.
+4. **Project settings** (ozubené kolo) → **Your apps** → ikona `</>` (Web) → zaregistruj aplikaci (bez Firebase Hosting) → zkopíruj objekt `firebaseConfig`.
+5. V `index.html` nahraď `window.FIREBASE_CONFIG = null;` objektem `window.FIREBASE_CONFIG = { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };` (config je veřejný). Authentication ani Hosting není potřeba.
+6. Volitelně: v Google Cloud Console → APIs & Services → Credentials omez API klíč na doménu GitHub Pages (HTTP referrers).
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function validScore(id) {
+      let d = request.resource.data;
+      return id.size() >= 16 && id.size() <= 64
+        && d.keys().hasOnly(['nick', 'days', 'earned', 'ts'])
+        && d.keys().hasAll(['nick', 'days', 'earned', 'ts'])
+        && d.nick is string && d.nick.size() >= 2 && d.nick.size() <= 16
+        && d.days is int && d.days >= 1 && d.days <= 100000
+        && d.earned is int && d.earned >= 0 && d.earned <= 1000000000
+        && d.ts == request.time;
+    }
+
+    function validSave() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['data', 'rev', 'day', 'money'])
+        && d.keys().hasAll(['data', 'rev', 'day', 'money'])
+        && d.data is string && d.data.size() > 0 && d.data.size() <= 100000
+        && d.rev is int && d.rev >= 1 && d.rev <= 1000000
+        && d.day is int && d.day >= 0 && d.day <= 100000
+        && d.money is number;
+    }
+
+    // žebříček: čtení a vložení, žádné úpravy ani mazání
+    match /scoresDays/{id} {
+      allow read: if true;
+      allow create: if validScore(id);
+      allow update, delete: if false;
+    }
+    match /scoresEarned/{id} {
+      allow read: if true;
+      allow create: if validScore(id);
+      allow update, delete: if false;
+    }
+
+    // uložení: čte se jen podle znalosti kódu, vylistovat všechna nejde
+    match /saves/{code} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if code.size() == 24 && validSave() && request.resource.data.rev == 1;
+      allow update: if validSave() && request.resource.data.rev == resource.data.rev + 1;
+      allow delete: if false;
+    }
+  }
+}
+```
+
+**Omezení:** hra běží v prohlížeči, takže pravidla ohlídají jen tvar a rozumné rozmezí hodnot. Kdo umí napsat vlastní požadavek, může do žebříčku poslat vymyšlený výsledek v povoleném rozmezí. Pro hru pro kamarády je to v pořádku, přísnější ochrana by chtěla server.
+
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.
@@ -115,7 +218,7 @@ Počet nabídek se už nepůlí. Základ je `1,5 + 1,1 × nejvyšší popularita
 - Časový limit na odpověď u objednávek.
 - Zvukové efekty pro klik, úspěch a neúspěch (soubory `mixkit-*.wav` v repozitáři už jsou).
 - Zapojení zvuků `mixkit-correct-answer`, `mixkit-wrong-answer`, `mixkit-typewriter` do akcí.
-- Žebříček nebo sdílení výsledku.
+- Sdílení výsledku.
 
 ## 5. Instalace
 
