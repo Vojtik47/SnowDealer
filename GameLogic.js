@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.18
+// Sněhový Dealer – verze 5.19
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.18";
-const BUILD = "2026-10-14.3";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.19";
+const BUILD = "2026-10-14.4";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -748,15 +748,16 @@ function pickCustomer(d) {
   return nick;
 }
 
-// Kolik lidí dnes napíše. Každá čtvrť zvlášť podle své popularity (0 až 10): nízká popularita = pár zpráv, hodně až u vysoké
-// (popularita 1 → 0,25 denně, 5 → 0,57, 7 → 1,1, 8 → 1,6, 10 → 2,8). Pak se násobí dnem v týdnu: pondělí až středa klid,
+// Kolik lidí dnes napíše. Každá čtvrť zvlášť podle své popularity (0 až 10): nízká popularita = skoro nic, hodně až u vysoké
+// (popularita 1 → 0,12 denně, 5 → 0,46, 7 → 1,04, 8 → 1,49, 10 → 2,8). Pak se násobí dnem v týdnu: pondělí až středa klid,
 // čtvrtek se rozjíždí, nejvíc je v pátek a v sobotu, v neděli jen pár. Nejvýš 5 poptávek z jedné čtvrti za den.
+// Rozjezd na začátku závisí jen na popularitě čtvrtí, ne na počtu dní.
 const WEEKDAY_DEMAND = {
   "Pondělí": 0.45, "Úterý": 0.5, "Středa": 0.55, "Čtvrtek": 1.0,
   "Pátek": 1.8, "Sobota": 1.8, "Neděle": 0.7
 };
 const MAX_OFFERS_PER_DISTRICT = 5;
-const districtDemand = d => 0.25 + 2.55 * Math.pow(S.pop[d] / POP_MAX, 3) + (S.idle[d] >= 4 ? 0.15 : 0);
+const districtDemand = d => 0.12 + 2.68 * Math.pow(S.pop[d] / POP_MAX, 3);
 
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -771,9 +772,8 @@ function planOffers() {
     const n = Math.min(MAX_OFFERS_PER_DISTRICT, Math.floor(districtDemand(d) * f + Math.random()));   // náhodné zaokrouhlení
     for (let i = 0; i < n; i++) plan.push(d);
   });
-  // rozjezd: prvních 30 dní aspoň 2 poptávky denně, jinak aspoň 1
-  const min = S.day <= 30 ? 2 : 1;
-  while (plan.length < min) plan.push(pickDistrict());
+  // aspoň 1 poptávka denně, ať hra není mrtvá
+  while (plan.length < 1) plan.push(pickDistrict());
   return shuffle(plan);
 }
 const offersForToday = () => planOffers().length;
@@ -793,7 +793,7 @@ function generateOffer(forced) {
   if (S.over || (S.timeLeft <= 0 && !(forced && S.dealers[forced]))) return;
 
   let grams = weightedRandomChoice([
-    { value: 1, weight: 0.40 }, { value: 2, weight: 0.30 }, { value: 3, weight: 0.20 },
+    { value: 1, weight: 0.42 }, { value: 2, weight: 0.33 }, { value: 3, weight: 0.15 },
     { value: 4, weight: 0.05 }, { value: 5, weight: 0.05 }
   ]);
   const district = forced || pickDistrict();

@@ -216,6 +216,14 @@ service cloud.firestore {
 - Do kanálu Snow Reviews přibyla pochvalná recenze „🟢 Prostě racing!" (celkem 24 recenzí).
 - Texty jsou aktualizované i v `ZPRAVY.md`.
 
+## 2o. Klidnější začátek: poptávky podle popularity (verze 5.19) – nahrazuje vzorec z 2l
+
+- **Poptávka čtvrti za den:** `0,12 + 2,68 × (popularita / 10)³` (dřív `0,25 + 2,55 × …`). Při popularitě 10 vychází pořád 2,8, takže pozdní hra se nemění. Násobí se dnem v týdnu jako dřív (Po–St 0,45–0,55, Čt 1, Pá a So 1,8, Ne 0,7), nejvýš 5 poptávek z jedné čtvrti za den.
+- **Zrušen bonus +0,15 pro čtvrti bez doručení 4+ dny** v počtu poptávek. Zvedal poptávku právě ze čtvrtí, které hráče neznají, takže na začátku chodilo i 5 až 6 objednávek v pátek a v sobotu. Bonus zůstal jen při výběru čtvrti (neobsloužené čtvrti se střídají).
+- **Zrušeno „aspoň 2 poptávky denně prvních 30 dní".** Zůstává jen „aspoň 1 denně". Rozjezd tedy závisí jen na popularitě a dni v týdnu, ne na počtu dní.
+- **Velikost objednávky:** 1 g 42 %, 2 g 33 %, 3 g 15 %, 4 g 5 %, 5 g 5 % (1 a 2 g dohromady 75 %).
+- **Průměr objednávek za den při popularitě kolem 1 (8 čtvrtí):** Po–St 1,1, Čt 1,3, Pá a So 1,9, Ne 1,2. Při popularitě 5: 1,9 / 3,6 / 6,6 / 2,6. Při popularitě 10 beze změny (11 / 22 / 40 / 16).
+
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.
