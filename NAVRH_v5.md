@@ -138,8 +138,8 @@ Počet nabídek se už nepůlí. Základ je `1,5 + 1,1 × nejvyšší popularita
 Vše běží přes Firebase Firestore (compat SDK z CDN). Dokud je v `index.html` `window.FIREBASE_CONFIG = null`, jsou online funkce schované a hra se chová jako dřív.
 
 - **Nick (povinný, verze 5.15):** bez nicku se do hry nevstoupí. Okno s dotazem (2 až 16 znaků, písmena, čísla, mezera, `_ . -`, jednoduchý filtr nevhodných slov) nejde zavřít, dokud hráč nezadá platný nick, a objeví se při nové hře, při „Pokračovat" i při načtení z cloudu. Uloží se do localStorage (`snowDealer.nick.v1`), na úvodní obrazovce jde změnit. Konkrétní hra si nick zapamatuje v uložení (`S.nick`), takže změna nicku neovlivní hru, která už běží, a záznam v žebříčku zůstane pod stejným jménem i po načtení na jiném zařízení.
-- **Žebříček top 20**, dvě tabulky: ⏱️ *Nejrychlejší výhra* (dny do 1 000 000 Kč, méně je lepší, při shodě je výš ten, kdo víc vydělal) a 💰 *Celkem vyděláno*. Zobrazuje se na úvodní obrazovce a na obrazovce konce hry.
-- **Odesílání (verze 5.15):** tabulka *Celkem vyděláno* je živá. Na začátku každého dne (`advanceDay()`) se pošle aktuální výsledek hry a přepíše se vždy stejný záznam (id dokumentu = `runId` hry). Hra se tak v žebříčku objeví po prvním dni, ne až na konci. Při konci hry i při výhře se pošle poslední hodnota (po výhře a „Pokračovat bez cíle" se tedy aktualizuje i při pozdější prohře). Tabulka *Nejrychlejší výhra* dostane záznam jen při výhře a jen jednou. Bez připojení zůstane zápis ve frontě SDK a odejde sám.
+- **Žebříček top 20**, dvě tabulky: ⏱️ *Nejrychlejší výhra* (dny do 1 000 000 Kč, méně je lepší, při shodě je výš ten, kdo měl víc hotovosti) a 💰 *Nejvíc hotovosti* (nejvyšší hotovost, kterou hráč v dané hře kdy měl u sebe, i když ji pak utratil; od verze 5.18, dřív se tu řadilo „celkem vyděláno"). Zobrazuje se na úvodní obrazovce, na obrazovce konce hry a v okně 🏆 Žebříček během hry. Maximum se sleduje v `S.stats.peak` (aktualizuje se v `updateStatus()`).
+- **Odesílání:** tabulka *Nejvíc hotovosti* (kolekce `scoresCash`) je živá. Na začátku každého dne (`advanceDay()`) se pošle aktuální maximum hotovosti a přepíše se vždy stejný záznam (id dokumentu = `runId` hry). Hra se v žebříčku objeví, až když hráč překoná startovní hotovost, takže v něm nejsou záznamy „bez pokroku". Při konci hry i při výhře se pošle poslední hodnota (po výhře a „Pokračovat bez cíle" se tedy aktualizuje i při pozdější prohře). Tabulka *Nejrychlejší výhra* (`scoresDays`) dostane záznam jen při výhře a jen jednou. Bez připojení zůstane zápis ve frontě SDK a odejde sám. Starší kolekce `scoresEarned` (verze 5.15 až 5.17) se už nepoužívá, záznamy v ní jdou v konzoli smazat.
 - **Kód uložení:** tlačítko ☁️ Cloud na úvodní obrazovce vytvoří náhodný kód (24 znaků z 32 možných, zobrazí se jako `XXXX-XXXX-…`). Hra se pak zálohuje do cloudu na začátku každého dne (vedle localStorage, ten zůstává jako záloha). Na jiném zařízení hráč kód zadá a načte hru. Cloud ukládá jen JSON stavu hry, den a peníze, žádné osobní údaje.
 - **Konflikty:** každé cloudové uložení má číslo revize `rev`. Zápis projde jen když zařízení zná poslední revizi. Když je v cloudu novější uložení z jiného zařízení, hra se při pokračování i během hry zeptá, které použít (☁️ cloud / 💾 toto zařízení). Skončená hra se v cloudu označí a nenabízí se k načtení.
 - **Firestore pravidla a postup nastavení:** viz níže.
@@ -161,11 +161,11 @@ service cloud.firestore {
     function validScore(id) {
       let d = request.resource.data;
       return id.size() >= 16 && id.size() <= 64
-        && d.keys().hasOnly(['nick', 'days', 'earned', 'ts'])
-        && d.keys().hasAll(['nick', 'days', 'earned', 'ts'])
+        && d.keys().hasOnly(['nick', 'days', 'cash', 'ts'])
+        && d.keys().hasAll(['nick', 'days', 'cash', 'ts'])
         && d.nick is string && d.nick.size() >= 2 && d.nick.size() <= 16
         && d.days is int && d.days >= 1 && d.days <= 100000
-        && d.earned is int && d.earned >= 0 && d.earned <= 1000000000
+        && d.cash is int && d.cash >= 0 && d.cash <= 10000000000
         && d.ts == request.time;
     }
 
@@ -185,14 +185,14 @@ service cloud.firestore {
       allow create: if validScore(id);
       allow update, delete: if false;
     }
-    // celkem vyděláno: živý záznam, upravit se dá jen stejný nick a jen směrem nahoru, mazat nejde
-    match /scoresEarned/{id} {
+    // nejvíc hotovosti: živý záznam, upravit se dá jen stejný nick a jen směrem nahoru, mazat nejde
+    match /scoresCash/{id} {
       allow read: if true;
       allow create: if validScore(id);
       allow update: if validScore(id)
         && request.resource.data.nick == resource.data.nick
         && request.resource.data.days >= resource.data.days
-        && request.resource.data.earned >= resource.data.earned;
+        && request.resource.data.cash >= resource.data.cash;
       allow delete: if false;
     }
 
@@ -208,7 +208,7 @@ service cloud.firestore {
 }
 ```
 
-**Omezení:** hra běží v prohlížeči, takže pravidla ohlídají jen tvar a rozumné rozmezí hodnot. Kdo umí napsat vlastní požadavek, může do žebříčku poslat vymyšlený výsledek v povoleném rozmezí. Od verze 5.15 může navíc kdokoli zvednout hodnotu cizího záznamu v tabulce *Celkem vyděláno* (id dokumentů jsou v tabulce čitelné), jméno ale přepsat nejde. Pro hru pro kamarády je to v pořádku, přísnější ochrana by chtěla server nebo přihlášení hráčů.
+**Omezení:** hra běží v prohlížeči, takže pravidla ohlídají jen tvar a rozumné rozmezí hodnot. Kdo umí napsat vlastní požadavek, může do žebříčku poslat vymyšlený výsledek v povoleném rozmezí. Od verze 5.15 může navíc kdokoli zvednout hodnotu cizího záznamu v tabulce *Nejvíc hotovosti* (id dokumentů jsou v tabulce čitelné), jméno ale přepsat nejde. Pro hru pro kamarády je to v pořádku, přísnější ochrana by chtěla server nebo přihlášení hráčů.
 
 ## 2n. „Racing" v textech zákazníků (verze 5.16)
 

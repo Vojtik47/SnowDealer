@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.16
+// Sněhový Dealer – verze 5.18
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.16";
-const BUILD = "2026-10-14.1";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.18";
+const BUILD = "2026-10-14.3";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -272,7 +272,7 @@ function newState() {
     pop: {}, police: {}, warned: {}, idle: {}, freq: {},
     accepted: {}, loyalty: {}, usedToday: [], salesToday: false,
     today: { delivered: 0, grams: 0, startMoney: 5000 },
-    stats: { delivered: 0, grams: 0, earned: 0, raids: 0 },
+    stats: { delivered: 0, grams: 0, earned: 0, raids: 0, peak: 0 },   // peak = nejvyšší hotovost u sebe (žebříček)
     runId: genCode(), sent: {}   // id hry pro žebříček a příznaky, co už bylo odesláno
   };
   BASE_DISTRICTS.forEach(d => {
@@ -2298,6 +2298,7 @@ function daysToRent() { return (30 - (S.day % 30)) % 30; }
 
 function updateStatus() {
   if (!S) return;
+  if (S.money > (S.stats.peak || 0)) S.stats.peak = S.money;
   // po snížení heatu se může varování zase "odemknout"
   districtNames.forEach(d => { S.warned[d] = Math.min(S.warned[d], heatLevel(S.police[d])); });
 
@@ -2573,7 +2574,7 @@ function advanceDay() {
   updateStatus();
   if (S.over) return;
   saveGame();
-  pushEarned();
+  pushScore();
   startDayOffers();
 }
 
@@ -2593,7 +2594,7 @@ const BAD_WORDS = ["kurv", "kurev", "pico", "picus", "curak", "cernoch", "negr",
 
 const LB_TABLES = {
   days: { coll: "scoresDays", label: "⏱️ Nejrychlejší výhra", field: "days", dir: "asc", val: r => `${r.days} dní` },
-  earned: { coll: "scoresEarned", label: "💰 Celkem vyděláno", field: "earned", dir: "desc", val: r => `${fmt(r.earned)} Kč` }
+  cash: { coll: "scoresCash", label: "💰 Nejvíc hotovosti", field: "cash", dir: "desc", val: r => `${fmt(r.cash)} Kč` }
 };
 const lbTab = {};     // zvolená záložka pro každý box
 const lbToken = {};   // zahodí odpověď, když mezitím přišel novější požadavek
@@ -2706,7 +2707,7 @@ async function renderLeaderboard(boxId) {
     const snap = await withTimeout(getDb().collection(t.coll).orderBy(t.field, t.dir).limit(LB_SIZE).get(), 12000);
     if (token !== lbToken[boxId]) return;
     const rows = snap.docs.map(d => d.data());
-    if (tab === "days") rows.sort((a, b) => a.days - b.days || b.earned - a.earned);   // shoda dnů: víc vyděláno je výš
+    if (tab === "days") rows.sort((a, b) => a.days - b.days || b.cash - a.cash);   // shoda dnů: víc hotovosti je výš
     if (!rows.length) { setMsg("Zatím tu nikdo není."); return; }
     list.textContent = "";
     rows.forEach((r, i) => {
@@ -2730,17 +2731,21 @@ function scoreNick() {
   if (!S.nick) S.nick = getNick();
   return S.nick;
 }
-const earnedDoc = () => ({ nick: scoreNick(), days: S.day, earned: Math.round(S.stats.earned), ts: firebase.firestore.FieldValue.serverTimestamp() });
+// nejvyšší hotovost, kterou hráč v téhle hře kdy měl u sebe
+const peakCash = () => Math.round(Math.max(S.stats.peak || 0, S.money));
+// do žebříčku se hra dostane, až když hráč přeskočí startovní hotovost (žádné záznamy „bez pokroku“)
+const hasProgress = () => peakCash() > newState().money;
+const scoreDoc = () => ({ nick: scoreNick(), days: S.day, cash: peakCash(), ts: firebase.firestore.FieldValue.serverTimestamp() });
 
-// Každý den: živý záznam v tabulce „Celkem vyděláno“ (id = runId, přepisuje se jen směrem nahoru).
-function pushEarned() {
+// Každý den: živý záznam v tabulce „Nejvíc hotovosti“ (id = runId, přepisuje se jen směrem nahoru).
+function pushScore() {
   const db = getDb();
-  if (!db || S.over || !scoreNick()) return;
-  db.collection("scoresEarned").doc(S.runId).set(earnedDoc())
+  if (!db || S.over || !hasProgress() || !scoreNick()) return;
+  db.collection("scoresCash").doc(S.runId).set(scoreDoc())
     .catch(e => console.warn("Aktualizace žebříčku se nepovedla:", e));
 }
 
-// Odeslání výsledku na konci hry. Tabulka „Celkem vyděláno“ se vždy aktualizuje na poslední hodnotu,
+// Odeslání výsledku na konci hry. Tabulka „Nejvíc hotovosti“ se vždy aktualizuje na poslední hodnotu,
 // tabulka dnů dostane záznam jen při výhře a jen jednou (id dokumentu = runId, takže žádné duplicity).
 async function submitScores(win) {
   const box = $("endSubmit");
@@ -2748,10 +2753,12 @@ async function submitScores(win) {
   const db = getDb();
   if (!db || !scoreNick()) return;
   S.sent = S.sent || {};
-  const jobs = [["earned", "scoresEarned"]];
+  const jobs = [];
+  if (hasProgress()) jobs.push(["cash", "scoresCash"]);
   if (win && !S.sent.days) jobs.push(["days", "scoresDays"]);
+  if (!jobs.length) return;
   box.textContent = "⏳ Odesílám výsledek…";
-  const doc = earnedDoc();
+  const doc = scoreDoc();
   let failed = false, pending = false;
   for (const [key, coll] of jobs) {
     const write = db.collection(coll).doc(S.runId).set(doc);
