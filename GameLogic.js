@@ -1,11 +1,11 @@
-// Sněhový Dealer – verze 5.22
+// Sněhový Dealer – verze 5.23
 "use strict";
 
 /* =====================================================================
    KONSTANTY A DATA
    ===================================================================== */
-const VERSION = "5.22";
-const BUILD = "2026-10-14.7";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
+const VERSION = "5.23";
+const BUILD = "2026-10-14.8";   // musí sedět s <meta name="build"> v index.html (hlídá nesoulad souborů)
 const SAVE_KEY = "snowDealer.save.v5";
 const ACH_KEY = "snowDealer.achievements.v5";
 
@@ -97,13 +97,17 @@ const SUPPLIERS = {
   "Ledovec": { mult: 0.95, scam: 0.10, note: "výhodný pro větší zásilky (50 g+)" },
   "Chladič": { mult: 1.05, scam: 0.02, note: "skoro spolehlivý" }
 };
-// základ ~1 500 Kč za gram, větší zásilky o něco levněji; dodavatel a týdenní trh to posunou ±10 %
+// základ ~1 500 Kč za gram, větší zásilky o něco levněji; dodavatel a týdenní trh to posunou ±10 %.
+// Nabízí se jen to, co se vejde do tvé kapacity stashe, a čím větší zázemí, tím větší zásilky (pro pozdní hru).
 const SUPPLY_OPTIONS = [
   { grams: 5, basePrice: 7500 },
   { grams: 10, basePrice: 15000 },
   { grams: 20, basePrice: 29000 },
   { grams: 50, basePrice: 72500 },
-  { grams: 100, basePrice: 140000 }
+  { grams: 100, basePrice: 140000 },
+  { grams: 200, basePrice: 270000 },
+  { grams: 300, basePrice: 396000 },
+  { grams: 500, basePrice: 650000 }
 ];
 
 const CAPACITY = [
@@ -125,7 +129,9 @@ const CONTACTS = [
 ];
 // Prodejci: sami vyřizují poptávky ve své čtvrti (z tvého stashe), ale přidávají heat.
 // Žádná pevná výplata: prodejce si bere 15 % z ceny objednávky (ty dostaneš 85 %).
-const DEALER = { hire: 25000, heatPerG: 0.05, share: 0.85 };
+// První prodejce stojí 100 000 Kč, každý další o 50 000 Kč víc (podle toho, kolik prodejců právě máš).
+const DEALER = { hire: 100000, hireStep: 50000, heatPerG: 0.05, share: 0.85 };
+const dealerHireCost = () => DEALER.hire + DEALER.hireStep * Object.keys(S.dealers).length;
 // Kapacita: kolik poptávek denně prodejce vyřídí (základ 1 + 1,2 × popularita čtvrti, upgrade přidá pevný počet)
 const DEALER_CAP_LVLS = [
   { cost: 50000, add: 2 }, { cost: 120000, add: 4 }, { cost: 300000, add: 7 }, { cost: 700000, add: 10 }
@@ -1707,13 +1713,25 @@ function dealerInfo(d) {
   return dd;
 }
 
+// Heat, který přidá prodejcova objednávka (opatrnost ho snižuje)
+const dealerHeatGain = (o, dd) => DEALER.heatPerG * (dd.stealth ? DEALER_STEALTH_LVLS[dd.stealth - 1].heat : 1) * o.grams;
+// Prodejce heat nikdy nezvedne nad hranici bezpečného režimu (když je zapnutý) a nikdy nad 3,4 (zátah je až 3,5).
+function dealerHeat(d, add) {
+  const safety = DEALER_SAFETY[S.dealerSafety] || DEALER_SAFETY[0];
+  const limit = safety.heat === null ? 3.4 : Math.min(3.4, safety.heat);
+  S.police[d] = Math.max(S.police[d], Math.min(S.police[d] + add, limit));
+}
+
 // Prodejce ve čtvrti vyřídí příchozí poptávku sám, pokud není pozastavený ani stažený a má ještě denní kapacitu.
+// Velkoodběry (kluby, hotely, firmy) mu nikdy nepadnou: ty zůstávají tobě. V bezpečném režimu nevezme objednávku,
+// po které by heat přesáhl hranici režimu.
 function dealerTakes(o) {
+  if (o.vip) return false;
   if (!S.dealers[o.district]) return false;
   const dd = dealerInfo(o.district);
   if (dd.paused) return false;
   const safety = DEALER_SAFETY[S.dealerSafety];
-  if (safety.heat !== null && S.police[o.district] >= safety.heat) return false;
+  if (safety.heat !== null && S.police[o.district] + dealerHeatGain(o, dd) > safety.heat) return false;
   if ((S.dealerCount[o.district] || 0) >= dealerOffers(o.district, dd)) return false;
   return S.supply >= o.grams;
 }
@@ -1730,7 +1748,7 @@ function dealerSells(card, o, msgLen) {
   let text, bad = false;
   if (o.trap) {
     // past: prodejce přijde o zboží, heat roste a může skončit v poutech (opatrnost šanci snižuje)
-    S.police[d] = Math.min(3.4, S.police[d] + 1.5);
+    dealerHeat(d, 1.5);
     const arrested = Math.random() < [0.4, 0.3, 0.2, 0.1][dd.stealth];
     if (arrested) delete S.dealers[d];
     text = `🚓 Past! ${o.nickname} byl převlečený policista. Prodejce přišel o zboží (${o.grams} g)${arrested ? " a skončil v poutech" : ""}.`;
@@ -1738,11 +1756,10 @@ function dealerSells(card, o, msgLen) {
   } else {
     const bonus = dd.price ? DEALER_PRICE_LVLS[dd.price - 1].bonus : 0;
     const payout = Math.round(o.price * DEALER.share * (1 + bonus) / 100) * 100;
-    const heatMult = dd.stealth ? DEALER_STEALTH_LVLS[dd.stealth - 1].heat : 1;
     S.money += payout;
     S.stats.delivered++; S.stats.grams += o.grams; S.stats.earned += payout;
     S.today.delivered++; S.today.grams += o.grams;
-    S.police[d] = Math.min(3.4, S.police[d] + DEALER.heatPerG * heatMult * o.grams);
+    dealerHeat(d, dealerHeatGain(o, dd));
     S.idle[d] = 0;
     addPop(d, POP_PER_DELIVERY);   // doručená objednávka zvedá popularitu i když ji vyřídí prodejce
     text = `✅ Prodejce doručil ${o.grams} g do ${d}: +${fmt(payout)} Kč`;
@@ -1830,8 +1847,10 @@ function refreshSuppliers() {
   S.market = round2(0.9 + Math.random() * 0.2);
   S.supplierOffers = [];
   const names = Object.keys(SUPPLIERS).sort(() => Math.random() - 0.5).slice(0, 3);
+  // z toho, co se vejde do kapacity, se losují 3 ze čtyř největších zásilek
+  const fitting = SUPPLY_OPTIONS.filter(o => o.grams <= cap()).slice(-4);
   names.forEach(name => {
-    const opts = SUPPLY_OPTIONS.slice().sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a.grams - b.grams);
+    const opts = fitting.slice().sort(() => Math.random() - 0.5).slice(0, 3).sort((a, b) => a.grams - b.grams);
     opts.forEach(o => {
       const price = Math.round(o.basePrice * supplierMult(name, o) * S.market * (0.92 + Math.random() * 0.16) / 100) * 100;
       S.supplierOffers.push({ id: ++S.seq, supplier: name, grams: o.grams, price, note: SUPPLIERS[name].note });
@@ -2073,7 +2092,7 @@ function renderUpgrades() {
     if (!dd) {
       label.textContent = `${d}: nikdo `;
       row.appendChild(label);
-      add("Najmout", DEALER.hire, `Vyřizuje poptávky z čtvrti sám (teď až ${dealerBase(d)} denně, ty to uvidíš v chatu). Bere si ${Math.round((1 - DEALER.share) * 100)} % z ceny objednávky, žádná pevná výplata. Kapacitu jde zvýšit upgradem. Při nízké popularitě mu chodí málo objednávek.`, () => {
+      add("Najmout", dealerHireCost(), `Vyřizuje poptávky z čtvrti sám (teď až ${dealerBase(d)} denně, ty to uvidíš v chatu), velkoodběry nechává tobě. Bere si ${Math.round((1 - DEALER.share) * 100)} % z ceny objednávky, žádná pevná výplata. Každý další prodejce je o ${fmt(DEALER.hireStep)} Kč dražší. Kapacitu jde zvýšit upgradem. Při nízké popularitě mu chodí málo objednávek.`, () => {
         S.dealers[d] = { cap: 0, price: 0, stealth: 0, paused: false };
         logMessage(`🧑‍💼 Najal jsi prodejce v ${d} (bere si ${Math.round((1 - DEALER.share) * 100)} % z objednávek).`);
       }, row);

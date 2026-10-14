@@ -250,6 +250,14 @@ service cloud.firestore {
 
 **Model (jen orientační, bez policie a událostí):** při doručení +0,12 a 6 objednávkách denně hráč dosáhne 1 000 000 Kč zhruba za 140 dní.
 
+## 2s. Prodejci: bezpečný režim, velkoodběry, cena a větší zásilky (verze 5.23)
+
+- **Bezpečný režim opravený.** Dřív prodejce kontroloval jen aktuální heat, ne to, co přidá objednávka (velká zásilka až +2,5, past +1,5), takže heat vyskočil těsně pod zátah a tvoje vlastní doručení nebo policejní akce pak způsobily zátah na tebe. Teď prodejce nevezme objednávku, po které by heat přesáhl hranici režimu (70 % = 2,45, 85 % = 2,975), a heat z jeho prodeje ani z pasti hranici nikdy nepřekročí (vypnutý režim: strop 3,4 jako dřív).
+- **Velkoodběry (10 až 50 g) prodejce nikdy nebere sám**, zůstávají tobě. Dřív prodejce jednou objednávkou vyprázdnil celý stash.
+- **Cena prodejců:** první 100 000 Kč, každý další o 50 000 Kč dražší (podle počtu prodejců, které právě máš: 100, 150, 200, 250 tis. atd.). Dřív 25 000 Kč.
+- **Dodavatelé nabízejí větší zásilky podle zázemí:** přibyly zásilky 200, 300 a 500 g (cena za gram klesá: 1 350 / 1 320 / 1 300 Kč). Nabízejí se jen zásilky, které se vejdou do kapacity stashe, a losují se 3 ze 4 největších (kapacita 20 g: 5/10/20 g, 50 g: 5 až 50 g, 150 g: 10 až 100 g, 500 g: 100 až 500 g).
+- **Zatím nevyřešené:** holič, SIM, mobil a úplatek (cooldown heatu) při hře s prodejci. Čeká se na návrh nové mechaniky.
+
 ## 3. Ladění obtížnosti
 
 - Policejní heat za doručení: +0,75 (dřív +1), šance 25 % rostoucí s dny na 40 %.
